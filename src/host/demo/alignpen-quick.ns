@@ -1,0 +1,51 @@
+// Align Pen with a touchscreen's taps (ctest host.NewtonAlignPenQuick).
+//
+// The calibration screen wants the pen held on each target for twenty
+// readings in a row; a tap on a Windows touchscreen comes as the press and
+// the release together, when the finger lifts, and was never held - the
+// calibration waited for a pen that never stayed (found by a user tapping
+// Setup's targets with a stylus and a finger on a touch laptop).  The
+// tablet driver now holds a pen lifted on the calibration screen until the
+// target has had its readings (hal/host/HostTabletDriver.cpp,
+// kCalibrationHoldReads).
+//
+// Here the panel is put askew as alignpen.ns puts it, and Setup's targets
+// are each tapped as a touchscreen taps them - down and up at once, before
+// a single sample is taken (HostTabletQuickCalibrate) - and the
+// calibration must still be made: a tap through the skewed panel then
+// lands where it was made.
+//
+//   build/host/host/newton --display 320x480 --erase --store x.store \
+//       --headless 200 --script src/host/demo/alignpen-quick.ns
+
+HostInclude("common.ns");			// tapAt, waitFor, walkSetup
+
+name := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+HostTabletSkew(24, 14, 1.04, 0.96);
+HostTabletQuickCalibrate(true);
+
+quickSpot := nil;
+
+call walkSetup with (name, func() begin
+	local shown := HostTabletCalibrationTarget();
+	Print("alignpen-quick: the calibration screen was " & (if shown then "shown" else "FAILED not shown"));
+	local v := AddView(GetRoot(), {
+		viewClass: 74,
+		viewFlags: 1 + 0x200,
+		viewBounds: {left: 10, top: 60, right: 310, bottom: 420},
+		viewFormat: 0,
+		viewClickScript: func(unit) begin
+			quickSpot := [GetPoint(0, unit), GetPoint(1, unit)];
+			true;
+		end});
+	v:Dirty();
+	HostTabletTap(160, 250, 80);
+	call waitFor with ("alignpen-quick: the tap", func() quickSpot, func() begin
+		local dx := quickSpot[0] - 160, dy := quickSpot[1] - 250;
+		local ok := shown and Abs(dx) <= 2 and Abs(dy) <= 2;
+		Print("alignpen-quick: after touchscreen taps a tap reads " & (if ok then "true" else "FAILED")
+			  & " (" & NumberStr(dx) & ", " & NumberStr(dy) & ")");
+		Print("alignpen-quick: done, " & (if ok then "0" else "1") & " failed");
+		HostQuit();
+	end, 30);
+end);

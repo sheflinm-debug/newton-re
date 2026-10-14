@@ -59,6 +59,7 @@ void	HostTabletRawTap(long x, long y, ULong milliseconds);	// down at (x, y) for
 extern void	(*gHostTabletTapHook)(long x, long y, Boolean down);
 void	HostTabletSetSkew(double dx, double dy, double sx, double sy);	// the panel reads the point (x*sx+dx, y*sy+dy)
 void	HostTabletAutoCalibrate(Boolean on);				// the calibration screen's targets tapped as they appear
+void	HostTabletQuickCalibrate(Boolean on);			// ... and tapped as a touchscreen taps: down and up at once, never held (the hold is the driver's)
 void	HostTabletCalibrationTarget(short h, short v);		// (Inker.h's gInkerCalibrationTargetHook)
 Boolean	HostTabletCalibrationTargetAt(long* h, long* v);	// the last target shown; ==> whether there has been one
 Boolean	HostTabletDriverBypassed(void);

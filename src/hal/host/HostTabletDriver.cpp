@@ -47,7 +47,6 @@
 
 #include <atomic>
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 PROTOCOL TMainTabletDriver : public TTabletDriver
@@ -115,8 +114,17 @@ static std::atomic<ULong>	gTapReads(0);		// the pen-down samples the calibration
 static ULong				gTapReadsAtDown;
 static Int64				gTapGiveUpAt;
 
+// a real pen on the calibration screen: the target wants it held for twenty
+// readings in a row, and a tap on a touchscreen is over before then - so a
+// pen lifted sooner is held where it was until the screen has read it
+// (kCalibrationHoldReads), or for two seconds at most
+const ULong					kCalibrationHoldReads = 24;
+static ULong				gPenReadsAtDown;
+static Int64				gPenHoldGiveUpAt;
+
 // the calibration screen's targets (TInker::GetRawPoint tells them)
 static std::atomic<bool>	gAutoCalibrate(false);
+static std::atomic<bool>	gQuickCalibrate(false);	// (the automatic taps made as a touchscreen's)
 void	(*gHostTabletTapHook)(long x, long y, Boolean down) = nil;
 static std::atomic<long>	gTargetH(-1);
 static std::atomic<long>	gTargetV(-1);
@@ -172,7 +180,10 @@ SampleDeadline(Int64* when)
 	TMainTabletDriver* driver = gHostTabletDriver;
 	if (driver == nil || driver->fState == kTabletStateShutDown)
 		return false;
-	if (!gRawDown.load() && !gTapPending.load() && !gTapDown.load() && !driver->fPenInBuffer)
+	// (gRawDowns: a tap that came and went between two samples - a
+	// touchscreen's, down and up together - still wants the next sample,
+	// which makes a stroke of it)
+	if (!gRawDown.load() && gRawDowns.load() == 0 && !gTapPending.load() && !gTapDown.load() && !driver->fPenInBuffer)
 		return false;
 	*when = driver->fNextSample;
 	return true;
@@ -409,6 +420,10 @@ TMainTabletDriver::Sample(void)
 		fPenInBuffer = true;
 		fState = kTabletStatePenDown;
 		TBCWakeUpInkerFromInterrupt(0);
+		gPenReadsAtDown = TBCPolledPenDownSamples();
+		TTime giveUp(2, kSeconds);
+		gPenHoldGiveUpAt = now;
+		CompAdd(&giveUp.time, &gPenHoldGiveUpAt);
 	}
 	if (fPenInBuffer)
 	{
@@ -416,7 +431,12 @@ TMainTabletDriver::Sample(void)
 		RawReading(gRawX.load(), gRawY.load(), &rawX, &rawY);
 		TBCInsertTabletSample(Convert(rawX, rawY), 0);
 	}
-	if (!gRawDown.load() && fPenInBuffer)
+	// a real pen lifted on the calibration screen before the target has had
+	// its readings is held there (a scripted tap holds itself, above)
+	Boolean held = !gRawDown.load() && fPenInBuffer && fDoingCalibration && !gTapDown.load()
+				&& TBCPolledPenDownSamples() - gPenReadsAtDown < kCalibrationHoldReads
+				&& CompCompare(&now, &gPenHoldGiveUpAt) < 0;
+	if (!gRawDown.load() && fPenInBuffer && !held)
 	{
 		gRawDowns.store(0);
 		TBCInsertTabletSample(kTabletPenUp, Now());
@@ -526,6 +546,13 @@ HostTabletAutoCalibrate(Boolean on)
 }
 
 
+void
+HostTabletQuickCalibrate(Boolean on)
+{
+	gQuickCalibrate.store(on);
+}
+
+
 // TInker::GetRawPoint's target (Inker.h's gInkerCalibrationTargetHook):
 // kept for a script to ask, and tapped at once when the calibration is
 // automatic - held until the target has had the twenty readings in a row it
@@ -540,7 +567,13 @@ HostTabletCalibrationTarget(short h, short v)
 {
 	gTargetH.store(h);
 	gTargetV.store(v);
-	if (gAutoCalibrate.load())
+	if (gAutoCalibrate.load() && gQuickCalibrate.load())
+	{
+		// a touchscreen's tap: down and up before a single sample is taken
+		HostTabletRawPenDown(h, v);
+		HostTabletRawPenUp();
+	}
+	else if (gAutoCalibrate.load())
 		StartTap(h, v, 500, kCalibrationTapReads);
 }
 

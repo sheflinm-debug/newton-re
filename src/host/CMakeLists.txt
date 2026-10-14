@@ -693,6 +693,17 @@ add_test(NAME host.NewtonAlignPen
 set_tests_properties(host.NewtonAlignPen PROPERTIES TIMEOUT 300 FIXTURES_SETUP host_alignpen_store
                      PASS_REGULAR_EXPRESSION "alignpen: done, 0 failed"
                      FAIL_REGULAR_EXPRESSION "FAILED|waited in vain")
+# Setup's calibration with a touchscreen's taps (src/host/demo/alignpen-quick.ns):
+# each target tapped down and up at once, as Windows hands over a finger or
+# a stylus, and the driver holds the pen until the target has its readings
+add_test(NAME host.NewtonAlignPenQuick
+         COMMAND newton --display 320x480 --erase
+                 --store ${CMAKE_CURRENT_BINARY_DIR}/alignpen-quick.store --headless 120
+                 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/alignpen-quick.ns
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonAlignPenQuick PROPERTIES TIMEOUT 180
+                     PASS_REGULAR_EXPRESSION "alignpen-quick: done, 0 failed"
+                     FAIL_REGULAR_EXPRESSION "FAILED|waited in vain")
 add_test(NAME host.NewtonAlignPen.restart
          COMMAND newton --display 320x480
                  --store ${CMAKE_CURRENT_BINARY_DIR}/alignpen.store --headless 120

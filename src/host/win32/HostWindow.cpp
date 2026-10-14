@@ -128,6 +128,43 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		DragFinish(drop);
 		return 0;
 	}
+	// A stylus or a finger, as it happens.  Left to Windows they come as
+	// mouse clicks made up when the pen lifts - the press and the release
+	// together, so that a press-and-hold can be told from a tap - and a pen
+	// held on the calibration screen's target was never seen down at all.
+	// Taken here (and not passed on, so no mouse messages are made of them)
+	// they come the moment the pen touches; the mouse itself still comes as
+	// the mouse messages below.  Only the first finger is the pen.
+	case WM_POINTERDOWN:
+	case WM_POINTERUPDATE:
+	case WM_POINTERUP:
+	{
+		POINTER_INPUT_TYPE type = PT_POINTER;
+		UINT32 id = GET_POINTERID_WPARAM(wParam);
+		if (!GetPointerType(id, &type) || (type != PT_PEN && type != PT_TOUCH))
+			break;
+		if (!IS_POINTER_PRIMARY_WPARAM(wParam))
+			return 0;
+		POINT at = { (short) LOWORD(lParam), (short) HIWORD(lParam) };	// screen coordinates
+		ScreenToClient(hwnd, &at);
+		long x = at.x / gScale, y = at.y / gScale;
+		if (msg == WM_POINTERDOWN)
+		{
+			gPenDown.store(true);
+			HostWindowPenDown(x, y);
+		}
+		else if (msg == WM_POINTERUPDATE)
+		{
+			if (gPenDown.load() && IS_POINTER_INCONTACT_WPARAM(wParam))
+				HostWindowPenMove(x, y);
+		}
+		else if (gPenDown.load())
+		{
+			HostWindowPenUp();
+			gPenDown.store(false);
+		}
+		return 0;
+	}
 	case WM_LBUTTONDOWN:
 		SetCapture(hwnd);
 		gPenDown.store(true);

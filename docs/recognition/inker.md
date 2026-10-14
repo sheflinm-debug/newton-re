@@ -175,3 +175,26 @@ factory calibration back (a tap then lands 30 pixels off), runs Align
 Pen, sleeps and wakes (the driver shut down and woken, `TabShutDown` /
 `TabWakeUp`), and on a restart finds the calibration read back from the
 store with no calibration screen.
+
+### A stylus or a finger on Windows (2026-10-14)
+
+A touchscreen's or a pen's tap on the Windows window used to reach the
+Newton as a mouse click made up when the pen lifted - the press and the
+release together - so on the calibration screen the pen was never seen
+down: a user tapping Setup's targets with a stylus and a finger on a
+touch laptop got nowhere.  Two changes, both DEVIATIONS of the host:
+
+- `host/win32/HostWindow.cpp` takes `WM_POINTERDOWN/UPDATE/UP` for a pen
+  and the first finger (`GetPointerType`), the moment they touch, and
+  passes nothing on to be made a mouse message of; the mouse still comes
+  as the mouse messages.
+- `hal/host/HostTabletDriver.cpp` holds a pen lifted on the calibration
+  screen until the target has had its twenty readings
+  (`kCalibrationHoldReads`, 24; two seconds at most), and schedules a
+  sample for a tap that came and went between two samples
+  (`SampleDeadline` counts `gRawDowns`), which before was never sampled
+  at all while the pen was idle.
+
+`src/host/demo/alignpen-quick.ns` (ctest `host.NewtonAlignPenQuick`,
+`HostTabletQuickCalibrate`) taps Setup's targets as a touchscreen taps -
+down and up at once - on the skewed panel, and a tap then lands true.

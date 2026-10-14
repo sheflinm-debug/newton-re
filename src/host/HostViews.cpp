@@ -227,6 +227,13 @@ FHostTabletAutoCalibrate(RefArg /*rcvr*/, RefArg on)
 }
 
 static Ref
+FHostTabletQuickCalibrate(RefArg /*rcvr*/, RefArg on)
+{
+	HostTabletQuickCalibrate(NOTNIL(on));
+	return NILREF;
+}
+
+static Ref
 FHostTabletCalibrationTarget(RefArg /*rcvr*/)
 {
 	long h, v;
@@ -276,6 +283,7 @@ HostRegisterViewFunctions(void)
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletTap")), RefVar(MakeCFunction((void*) FHostTabletTap, 3, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletSkew")), RefVar(MakeCFunction((void*) FHostTabletSkew, 4, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletAutoCalibrate")), RefVar(MakeCFunction((void*) FHostTabletAutoCalibrate, 1, nil)));
+	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletQuickCalibrate")), RefVar(MakeCFunction((void*) FHostTabletQuickCalibrate, 1, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletShutDowns")), RefVar(MakeCFunction((void*) FHostTabletShutDowns, 0, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletCalibrationTarget")), RefVar(MakeCFunction((void*) FHostTabletCalibrationTarget, 0, nil)));
 	HostRegisterCardFunctions();
