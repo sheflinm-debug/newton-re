@@ -15,6 +15,7 @@ is described in [docs/recognition/arabic.md](../../docs/recognition/arabic.md).
 | `xrs.py` | Reads a harvest back, joined to the samples' words (the builder's input); `summary` prints its statistics. |
 | `arabic.py` | The registry of Arabic-script characters and the reader's codes for them (letters, hamza seats, vowel marks; other languages' letters reserved); a word's letters in their positional forms. |
 | `build_dte.py` | Builds an Arabic letter table (DTEMain) from a harvest: letters aligned to the xrs, counts made nibbles on the ROM's scale. Load it with `NEWTON_DTE_MAIN=<file>`. |
+| `train_net.py` | Trains the host's own Arabic word engine - a bidirectional GRU over the pen's trajectory, CTC - on the samples, measures it on held-out words, and exports it to ONNX for the Newton host. Needs `torch` (CPU build: `pip install torch --index-url https://download.pytorch.org/whl/cpu`) and `onnxruntime`. |
 | `report.py` | Summarises the logs of replay runs: the reader's result codes and each sample's readings. |
 
 Each tool's header gives its inputs, outputs and exact invocation.
