@@ -240,6 +240,28 @@ first five) with their 40 words - but half the words find no path at
 all, which with no free letters to blame means the right letters' own
 matches net nothing: the models.
 
+## Finding 5: a host network reads Arabic (2026-10-14)
+
+The user's decision: a host engine of the Newton's own kind - a third
+word recogniser behind the author's seam (`docs/recognition/engines.md`),
+which adds to the architecture rather than changes it - for a working
+prototype, with ParaGraph's Arabic table kept as the long-term authentic
+route.  `tools/arabic-ink/train_net.py` trains a two-layer bidirectional
+GRU (128 wide) with CTC over the pen's trajectory (per point: dx, dy, pen
+down, a stroke's first and last, the height above the base line; the
+word scaled to its height and mirrored, resampled to a step of a tenth
+of the height), on ADAB's samples, and exports it to ONNX.
+
+**Established by** training on 3,000 words of sets 1 and 2 for 12 epochs
+(about 2 minutes an epoch on 16 cores) and reading 300 held-out words of
+set 3, other writers: letters wrong 27.1%; words right 7.3% read freely,
+**89.3% with the 952 place names as the vocabulary** (a CTC score per
+word, over the 40 nearest the free reading).  ParaGraph's table, with
+the same vocabulary, read 12%.  The full run (10,126 words, 20 epochs)
+is next, then the engine: the model run in host code on each word the
+ink grouping makes, the reading posted as the Newton's own recognisers
+post theirs, an "Arabic" button in the Handwriting Recognition slip.
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware
