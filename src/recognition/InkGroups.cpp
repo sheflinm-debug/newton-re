@@ -21,6 +21,7 @@
 #include "RSSymbols.h"
 #include "Locale.h"				// GetPreference
 #include "FixedMath.h"
+#include "InkMirror.h"
 #include <string.h>
 #include <stddef.h>
 
@@ -101,6 +102,9 @@ NewGetTraceFromStrokes(TStroke** strokes, PS_point_type** trace, short* nStrokes
 			}
 			y += 0x8000;
 			short sy = (short) ((uint32_t) y >> 16);
+			// DEVIATION: writing right to left handed over mirrored (InkMirror.h)
+			if (InkMirrored())
+				x = MirrorInkX(x);
 			if (x < minX)
 				minX = x;
 			if (sy < minY)

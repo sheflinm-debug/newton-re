@@ -43,6 +43,7 @@
 #include "Dictionaries.h"
 #include "FixedMath.h"
 #include "NewtonMemory.h"
+#include "InkMirror.h"
 #include <string.h>
 #include <ctype.h>
 
@@ -1217,6 +1218,18 @@ strokesDone:
 		{
 			u->fLeft = (short) ((word->fInkBox[0] << 8) | word->fInkBox[1]);
 			u->fRight = (short) ((word->fInkBox[4] << 8) | word->fInkBox[5]);
+			// DEVIATION: the box is the mirrored trace's when the writing was
+			// handed over mirrored (InkMirror.h): turned back, its right is
+			// the left on the page
+			if (InkMirrored())
+			{
+				long left = u->fLeft;
+				u->fLeft = MirrorInkX(u->fRight);
+				u->fRight = MirrorInkX(left);
+			}
+			if (TracingCursive())
+				fprintf(stderr, "[cursive] word box: x %ld to %ld%s\n", u->fLeft / 8, u->fRight / 8,
+						InkMirrored() ? " (turned back from the mirrored trace)" : "");
 		}
 		else
 		{

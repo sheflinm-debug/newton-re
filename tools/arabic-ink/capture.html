@@ -1,0 +1,369 @@
+<title>Arabic Ink Pad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column, a MessagePad-style writing slate in the middle, the prompt above it and the controls under the pen hand. */
+:root {
+  --bg: #eef0ea;
+  --fg: #1f2620;
+  --muted: #5d6a5f;
+  --line: #c9cfc4;
+  --slate: #b9c4ad;
+  --slate-edge: #8f9c85;
+  --ink: #141a15;
+  --guide: rgba(20, 26, 21, 0.28);
+  --accent: #2f5d50;
+  --accent-fg: #f3f6f1;
+  --ok: #2e6b3a;
+  --warn: #8a5a12;
+  --font-ar: "Amiri", "Noto Naskh Arabic", "Geeza Pro", "Arabic Typesetting", serif;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161a17; --fg: #e3e8e1; --muted: #9aa69c; --line: #313a33;
+    --slate: #9fab94; --slate-edge: #6f7b67; --ink: #101511; --guide: rgba(16, 21, 17, 0.3);
+    --accent: #7fb8a5; --accent-fg: #0f1a16; --ok: #7cc48a; --warn: #e0b064;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161a17; --fg: #e3e8e1; --muted: #9aa69c; --line: #313a33;
+  --slate: #9fab94; --slate-edge: #6f7b67; --ink: #101511; --guide: rgba(16, 21, 17, 0.3);
+  --accent: #7fb8a5; --accent-fg: #0f1a16; --ok: #7cc48a; --warn: #e0b064;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-ui); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 32px; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+.status { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.status.ok { color: var(--ok); }
+.status.warn { color: var(--warn); }
+.sets { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: 500 13px var(--font-ui); border: 1px solid var(--line); background: transparent; color: var(--fg); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.prompt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
+.nav { font: 500 20px var(--font-ui); width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.target { text-align: center; min-width: 0; }
+.target .word { font-family: var(--font-ar); font-size: 48px; line-height: 1.2; direction: rtl; }
+.target .meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.target input { font: 400 28px var(--font-ar); direction: rtl; text-align: center; width: 100%; max-width: 320px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--fg); padding: 4px; }
+.slate { position: relative; background: var(--slate); border: 2px solid var(--slate-edge); border-radius: 6px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.18); }
+canvas { display: block; width: 100%; height: 240px; touch-action: none; cursor: crosshair; border-radius: 4px; }
+.slate .hint { position: absolute; inset-inline-start: 10px; bottom: 6px; font: 400 11px var(--font-mono); color: var(--guide); pointer-events: none; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: 500 15px var(--font-ui); padding: 12px 18px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); flex: 1 1 160px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+.opts label { display: inline-flex; gap: 6px; align-items: center; }
+details { border-top: 1px solid var(--line); padding-top: 12px; }
+summary { cursor: pointer; font-weight: 500; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 12px; }
+.cell { border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; text-align: center; background: transparent; color: var(--fg); cursor: pointer; }
+.cell .w { font-family: var(--font-ar); font-size: 22px; direction: rtl; line-height: 1.3; }
+.cell .n { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cell.done .n { color: var(--ok); }
+.cell.current { border-color: var(--accent); }
+.note { font-size: 13px; color: var(--muted); max-width: 65ch; margin: 0; }
+.confirm { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { .btn, .chip, .nav { transition: background-color 120ms, border-color 120ms; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Arabic Ink Pad</h1>
+    <span class="status" id="status">Connecting to storage…</span>
+  </header>
+
+  <div class="sets" role="group" aria-label="Sample set">
+    <button class="chip" id="set-words" data-set="words" aria-pressed="true">Words</button>
+    <button class="chip" id="set-letters" data-set="letters" aria-pressed="false">Letters</button>
+    <button class="chip" id="set-free" data-set="free" aria-pressed="false">Free</button>
+  </div>
+
+  <div class="prompt">
+    <button class="nav" id="next" aria-label="Next word">‹</button>
+    <div class="target" id="target"></div>
+    <button class="nav" id="prev" aria-label="Previous word">›</button>
+  </div>
+
+  <div class="slate">
+    <canvas id="pad" aria-label="Writing area"></canvas>
+    <span class="hint" id="hint">write between the lines, right to left</span>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="save" disabled>Save and next</button>
+    <button class="btn" id="undo" disabled>Undo stroke</button>
+    <button class="btn" id="clear" disabled>Clear</button>
+    <span id="lastbox"></span>
+  </div>
+
+  <div class="opts">
+    <label><input type="checkbox" id="fingers"> Accept finger strokes</label>
+    <span id="pentype">Pen: not seen yet</span>
+  </div>
+
+  <details id="progress">
+    <summary>Progress</summary>
+    <div class="grid" id="grid"></div>
+  </details>
+
+  <p class="note">Each saved sample keeps every pen point with its time and pressure, so the Newton recogniser can be replayed and trained on it. Write naturally, dots and marks last if that is your habit. Three samples of each word is a good start.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Words chosen so every letter appears at the start, middle and end of a
+  // word, with the six letters that never join the next one (ا د ذ ر ز و).
+  var SETS = {
+    words: ["باب","بيت","كتاب","قلم","شمس","قمر","ولد","بنت","دار","نور","سلام","مدرسة","عربي","كلمة","يد","زرع","ذهب","طالب","ظل","عين","غرفة","فيل","حب","خبز","جمل","صبر","ضوء","ثلج","هذا","لا","ماء","سمك","نهر","جبل","وردة","شجرة","طائرة","مفتاح","ثعلب","حصان"],
+    letters: ["ا","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش","ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","ه","و","ي","ء","ة","ى","لا"],
+    free: []
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var pad = $("pad"), ctx = pad.getContext("2d");
+  var state = { set: "words", index: 0, strokes: [], current: null, startT: 0, penSeen: false, pointerTypes: {} };
+  var counts = {};          // word -> saved count
+  var lastSaved = null;     // ref of the most recent save, for "delete last"
+  var db = null;            // {add(doc) -> Promise<remove()>}, once storage answers
+
+  try { var saved = JSON.parse(localStorage.getItem("arabic-ink-pos") || "null"); if (saved && SETS[saved.set]) { state.set = saved.set; state.index = saved.index | 0; } } catch (e) {}
+
+  function setStatus(text, kind) { var s = $("status"); s.textContent = text; s.className = "status" + (kind ? " " + kind : ""); }
+  function remember() { try { localStorage.setItem("arabic-ink-pos", JSON.stringify({ set: state.set, index: state.index })); } catch (e) {} }
+
+  function currentWord() {
+    if (state.set === "free") { var i = $("freeword"); return i ? i.value.trim() : ""; }
+    var list = SETS[state.set]; return list[Math.max(0, Math.min(state.index, list.length - 1))];
+  }
+
+  // ---- geometry: guides at fixed fractions of the slate, stored with each sample
+  var GUIDE = { top: 0.30, base: 0.66 };
+  function cssSize() { var r = pad.getBoundingClientRect(); return { w: r.width, h: r.height }; }
+  function resize() {
+    var s = cssSize(), dpr = window.devicePixelRatio || 1;
+    pad.width = Math.round(s.w * dpr); pad.height = Math.round(s.h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    redraw();
+  }
+  function redraw() {
+    var s = cssSize();
+    ctx.clearRect(0, 0, s.w, s.h);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--guide");
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 5]);
+    [GUIDE.top, GUIDE.base].forEach(function (f) { ctx.beginPath(); ctx.moveTo(8, s.h * f); ctx.lineTo(s.w - 8, s.h * f); ctx.stroke(); });
+    ctx.setLineDash([]);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--ink");
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    state.strokes.concat(state.current ? [state.current] : []).forEach(drawStroke);
+  }
+  function drawStroke(pts) {
+    if (pts.length < 4) return;
+    if (pts.length === 4) { ctx.beginPath(); ctx.arc(pts[0], pts[1], 1.6, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); return; }
+    for (var i = 4; i < pts.length; i += 4) {
+      var p = pts[i + 3] || 0.5;
+      ctx.lineWidth = 1.2 + p * 2.4;
+      ctx.beginPath(); ctx.moveTo(pts[i - 4], pts[i - 3]); ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke();
+    }
+  }
+
+  // ---- pen input: pen always, finger only when allowed (palm rejection)
+  function accepts(e) {
+    state.pointerTypes[e.pointerType] = true;
+    if (e.pointerType === "pen") { if (!state.penSeen) { state.penSeen = true; $("pentype").textContent = "Pen: detected"; } return true; }
+    if (e.pointerType === "mouse") return true;
+    return $("fingers").checked;
+  }
+  function pushPoint(pts, e) {
+    var r = pad.getBoundingClientRect();
+    if (!state.startT) state.startT = e.timeStamp;
+    var p = e.pointerType === "pen" ? e.pressure : (e.pressure || 0.5);
+    pts.push(Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, Math.round(e.timeStamp - state.startT), Math.round(p * 100) / 100);
+  }
+  pad.addEventListener("pointerdown", function (e) {
+    if (!accepts(e)) return;
+    e.preventDefault();
+    pad.setPointerCapture(e.pointerId);
+    state.current = []; state.current.pointerId = e.pointerId;
+    pushPoint(state.current, e);
+    redraw();
+  });
+  pad.addEventListener("pointermove", function (e) {
+    if (!state.current || e.pointerId !== state.current.pointerId) return;
+    var evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    if (!evs.length) evs = [e];
+    evs.forEach(function (c) { pushPoint(state.current, c); });
+    redraw();
+  });
+  function finish(e) {
+    if (!state.current || e.pointerId !== state.current.pointerId) return;
+    pushPoint(state.current, e);
+    state.strokes.push(state.current.slice()); state.current = null;
+    redraw(); updateButtons();
+  }
+  pad.addEventListener("pointerup", finish);
+  pad.addEventListener("pointercancel", function (e) { if (state.current && e.pointerId === state.current.pointerId) { state.current = null; redraw(); } });
+
+  // ---- prompt and progress
+  function renderTarget() {
+    var t = $("target");
+    t.textContent = "";
+    if (state.set === "free") {
+      var inp = document.createElement("input");
+      inp.id = "freeword"; inp.placeholder = "اكتب الكلمة"; inp.setAttribute("aria-label", "What you will write");
+      inp.addEventListener("input", updateButtons);
+      t.appendChild(inp);
+      var m = document.createElement("div"); m.className = "meta"; m.textContent = "type what you write, then write it"; t.appendChild(m);
+    } else {
+      var list = SETS[state.set], w = currentWord();
+      var d = document.createElement("div"); d.className = "word"; d.textContent = w; t.appendChild(d);
+      var m2 = document.createElement("div"); m2.className = "meta";
+      m2.textContent = (state.index + 1) + " / " + list.length + " · saved " + (counts[w] || 0);
+      t.appendChild(m2);
+    }
+    document.querySelectorAll(".chip").forEach(function (c) { c.setAttribute("aria-pressed", c.dataset.set === state.set ? "true" : "false"); });
+    $("prev").disabled = $("next").disabled = state.set === "free";
+    renderGrid(); updateButtons();
+  }
+  function renderGrid() {
+    var g = $("grid"); g.textContent = "";
+    var list = state.set === "free" ? Object.keys(counts).filter(function (w) { return SETS.words.indexOf(w) < 0 && SETS.letters.indexOf(w) < 0; }) : SETS[state.set];
+    if (!list.length) { var p = document.createElement("p"); p.className = "note"; p.textContent = "Free samples you save appear here."; g.appendChild(p); return; }
+    list.forEach(function (w, i) {
+      var b = document.createElement("button"); b.className = "cell" + ((counts[w] || 0) >= 3 ? " done" : "") + (state.set !== "free" && i === state.index ? " current" : "");
+      var a = document.createElement("div"); a.className = "w"; a.textContent = w;
+      var n = document.createElement("div"); n.className = "n"; n.textContent = (counts[w] || 0) + " saved";
+      b.appendChild(a); b.appendChild(n);
+      if (state.set !== "free") b.addEventListener("click", function () { go(i); });
+      g.appendChild(b);
+    });
+  }
+  function go(i) {
+    var list = SETS[state.set];
+    state.index = (i + list.length) % list.length;
+    clearInk(); remember(); renderTarget();
+  }
+  function clearInk() { state.strokes = []; state.current = null; state.startT = 0; redraw(); updateButtons(); }
+  function updateButtons() {
+    var has = state.strokes.length > 0;
+    $("undo").disabled = !has; $("clear").disabled = !has;
+    $("save").disabled = !has || !db || !currentWord();
+  }
+
+  $("next").addEventListener("click", function () { go(state.index + 1); });
+  $("prev").addEventListener("click", function () { go(state.index - 1); });
+  $("undo").addEventListener("click", function () { state.strokes.pop(); if (!state.strokes.length) state.startT = 0; redraw(); updateButtons(); });
+  $("clear").addEventListener("click", clearInk);
+  document.querySelectorAll(".chip").forEach(function (c) {
+    c.addEventListener("click", function () { state.set = c.dataset.set; state.index = 0; clearInk(); remember(); renderTarget(); });
+  });
+
+  // ---- saving
+  $("save").addEventListener("click", function () {
+    var word = currentWord(); if (!word || !db) return;
+    var s = cssSize();
+    var doc = {
+      word: word, set: state.set,
+      strokes: state.strokes.map(function (st) { return st.slice(); }),
+      pointFormat: "x,y,t,pressure (CSS px from the slate's top left; t in ms from the first point)",
+      slate: { width: Math.round(s.w), height: Math.round(s.h), topLine: Math.round(s.h * GUIDE.top), baseLine: Math.round(s.h * GUIDE.base) },
+      devicePixelRatio: window.devicePixelRatio || 1,
+      pointerTypes: Object.keys(state.pointerTypes),
+      userAgent: navigator.userAgent.slice(0, 160),
+      createdAt: new Date().toISOString()
+    };
+    $("save").disabled = true;
+    setStatus("Saving…");
+    db.add(doc).then(function (remove) {
+      lastSaved = { remove: remove, word: word };
+      counts[word] = (counts[word] || 0) + 1;
+      setStatus("Saved “" + word + "”", "ok");
+      renderLast();
+      if (state.set === "free") { clearInk(); renderGrid(); } else go(state.index + 1);
+    }, function (err) {
+      setStatus(err && err.code === "quota_exceeded" ? "Storage is full. Ask Claude to export and clear old samples." : "Not saved: " + (err && err.message || "storage refused the write"), "warn");
+      updateButtons();
+    });
+  });
+
+  function renderLast() {
+    var box = $("lastbox"); box.textContent = "";
+    if (!lastSaved) return;
+    var b = document.createElement("button"); b.className = "btn"; b.textContent = "Delete last save";
+    b.addEventListener("click", function () {
+      box.textContent = "";
+      var c = document.createElement("span"); c.className = "confirm";
+      c.appendChild(document.createTextNode("Delete “" + lastSaved.word + "”? "));
+      var yes = document.createElement("button"); yes.className = "btn"; yes.textContent = "Delete";
+      var no = document.createElement("button"); no.className = "btn"; no.textContent = "Keep";
+      yes.addEventListener("click", function () {
+        var l = lastSaved; lastSaved = null;
+        l.remove().then(function () { counts[l.word] = Math.max(0, (counts[l.word] || 1) - 1); setStatus("Deleted “" + l.word + "”", "ok"); renderTarget(); renderLast(); },
+          function () { setStatus("Could not delete", "warn"); });
+      });
+      no.addEventListener("click", renderLast);
+      c.appendChild(yes); c.appendChild(no); box.appendChild(c);
+    });
+    box.appendChild(b);
+  }
+
+  // ---- storage
+  window.addEventListener("resize", resize);
+  resize(); renderTarget();
+
+  // Two places samples can go: the artifact's own store (the page opened
+  // from claude.ai), or tools/arabic-ink/serve.py on the PC (the page
+  // opened from that server, where window.claude does not exist).
+  // Either way db.add(doc) resolves a function that deletes that sample.
+  function total() { var n = 0; for (var k in counts) n += counts[k]; return n; }
+
+  function useLocalServer() {
+    function json(r) { if (!r.ok) throw new Error("the PC answered " + r.status); return r.json(); }
+    fetch("api/samples", { cache: "no-store" }).then(json).then(function (res) {
+      counts = {};
+      res.samples.forEach(function (s) { if (s.word) counts[s.word] = (counts[s.word] || 0) + 1; });
+      db = {
+        add: function (doc) {
+          return fetch("api/samples", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(doc) })
+            .then(json).then(function (r) {
+              setTimeout(function () { setStatus(total() + " samples saved on the PC", "ok"); }, 1500);
+              return function () { return fetch("api/samples/" + encodeURIComponent(r.id), { method: "DELETE" }).then(json); };
+            });
+        }
+      };
+      setStatus(total() + " samples saved on the PC", "ok");
+      renderTarget();
+    }).catch(function (e) { setStatus("Can't reach the PC: is serve.py running? (" + e.message + ")", "warn"); });
+  }
+
+  function useArtifactStore(d) {
+    var col = d.collection("samples");
+    db = { add: function (doc) { return col.add(doc).then(function (ref) { return function () { return ref.delete(); }; }); } };
+    col.onSnapshot(function (snap) {
+      var c = {};
+      snap.docs.forEach(function (doc) { var w = doc.data().word; if (w) c[w] = (c[w] || 0) + 1; });
+      counts = c;
+      setStatus(snap.size + " samples saved", "ok");
+      renderTarget();
+    }, function (err) { setStatus("Storage stopped: " + (err && err.message || err.code), "warn"); });
+    updateButtons();
+  }
+
+  if (!(window.claude && window.claude.use)) useLocalServer();
+  else window.claude.use("db").then(function (d) {
+    if (d) useArtifactStore(d);
+    else setStatus("Storage unavailable: open this page signed in to Claude to save samples", "warn");
+  }, function () { setStatus("Storage unavailable", "warn"); });
+})();
+</script>

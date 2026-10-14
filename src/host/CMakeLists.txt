@@ -1423,6 +1423,18 @@ set_tests_properties(host.NewtonCursiveJoined PROPERTIES TIMEOUT 240 ENVIRONMENT
                      PASS_REGULAR_EXPRESSION "answers: \"on\"/.*answers: \"no\"/.*answers: \"Mom\"/.*answers: \"to\"/.*answers: \"nun\"/.*the page reads \"on no . to . / \".*cursive-joined: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain")
 
+# mirrored cursive (src/host/demo/cursive-mirrored.ns, a fork's DEVIATION -
+# docs/recognition/arabic.md): with NEWTON_INK_MIRROR=1 the reader is
+# handed the writing turned left to right (recognition/InkMirror.h).
+# cursive.ns's "ton" written as its own mirror image, right to left from
+# x = 200 to 156, is read as "ton", and the word's box, turned back from
+# the mirrored trace, is where the ink was (the Print lines may come out
+# before the reader's stderr or after it, hence the two orders)
+add_test(NAME host.NewtonCursiveMirrored COMMAND newton --display 320x480 --headless 60 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/cursive-mirrored.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonCursiveMirrored PROPERTIES TIMEOUT 180 ENVIRONMENT "NEWTON_TRACE_CURSIVE=1;NEWTON_INK_MIRROR=1"
+                     PASS_REGULAR_EXPRESSION "(answers: \"ton\"/85.*word box: x 156 to 200 \\(turned back.*the page reads \"ton\".*mirrored: done|the page reads \"ton\".*answers: \"ton\"/85.*word box: x 156 to 200 \\(turned back)"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|panic")
+
 # the journal (testing/Journal.h): "ton" written while recording, the four
 # strokes played back into the tablet buffer and read again (needs the
 # ROM image)
