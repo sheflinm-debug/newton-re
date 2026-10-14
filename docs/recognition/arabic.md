@@ -124,12 +124,74 @@ Tunisian place names written by many writers, the pen's trajectory in
 InkML with UPX labels.  It is not redistributed: a script will convert a
 copy the user downloads into `build/adab/`.
 
+## Finding 2: the reader reads Arabic from a built table (2026-10-14)
+
+The pipeline runs end to end: samples (the phone's, ADAB's) -> the xrs
+the reader cuts them into (`harvest.py`, `NEWTON_XR_DUMP`) -> a letter
+table (`build_dte.py`, `arabic.py`'s codes) -> the reader with that table
+(`NEWTON_DTE_MAIN`) -> Arabic text (`report.py --arabic`).
+
+**Established by** replaying 42 of the user's words and 50 of ADAB's set 3
+(writers not trained on) against a table built from ADAB's sets 1 and 2
+(10,048 words aligned; 35 characters, 210 variants), each with and without
+a vocabulary (`to_ns.py --dictionary`):
+
+| | read | the word first | among the first five | letters right |
+|---|---|---|---|---|
+| user's 42, no vocabulary | 21 | 0 | 0 | 9% |
+| user's 42, their 40 words | 21 | 0 | 0 | 10% |
+| ADAB 50, no vocabulary | 35 | 0 | 0 | 16% |
+| ADAB 50, ADAB's 952 words | 35 | 0 | 2 | 16% |
+
+The mechanism is right: with a table holding only alif and ba, "باب"
+reads as "باب".  With the whole alphabet the readings are Arabic
+letters of about the right number but seldom the right ones
+("السواسي" -> "اسلانيّي", with "السواسي" second).  What was learnt on the
+way, each a DEVIATION under the host's table:
+
+- **The Viterbi keeps only lower-case letters freely** (`XrlvDevelopCell`:
+  a capital only at a link), and a letter's net gain must be positive to
+  survive (threshold 0, `outLine` clamped at 0).  So the table's codes
+  are all marked lower case in a character-class table of the host's,
+  and the alphabet is the table's own codes (`ParaGraph.cpp`,
+  `HostDTEMain`, `SetOsRecTableAndCharSet`): no borrowing of Latin
+  letters, 119 codes to allocate (`arabic.py`'s registry, with the extra
+  letters of Persian, Urdu, Pashto, Kurdish and Jawi reserved).
+- **The ROM's scale**: the type nibbles discriminate (12 down to 0), the
+  other four features are permissive (mostly 11-12), so a typical match
+  nets a few points over the 50 it costs.  Peaky tables in all five
+  features killed every path (-9 everywhere); steeper tables in the four
+  made no difference once the scale was right.
+- The English trigrams are left out (`Xrlv.cpp`), and every xr may end
+  a letter (the low level's "last in letter" marks are dense enough -
+  42% of xrs - that this changed little).
+- A `Recognize()` configuration of a script's own needs the ROM's
+  re-recognition configuration under it (`HostRerecognizeConfig()`,
+  host/HostViews.cpp), or nothing is recognised at all.
+- ADAB's labels carry shadda, ta marbuta and the hamza seats, but no
+  short vowels or tanwin: the marks' shapes will need the user's own
+  vowelled samples.
+
+Where the accuracy is lost, as far as is known: the medial forms of
+ب ت ث ن ي are one tooth each, told apart by dots that the low level
+places after the letter but not always next to it, so the models of the
+tooth letters are nearly alike; a one-prototype variant matches almost
+any xr for a small gain, and chains of them outscore the right word; and
+the reader's own rules and penalties (`XrPost`, the class and break
+penalties) were tuned for Latin letters.
+
 ## Next
 
-1. A way to turn the switch on from the Newton itself (an "Arabic" choice
-   in the Handwriting Recognition slip), once there is something Arabic to
-   read.
-2. Arabic letter prototypes: how the DTE tables are laid out
+1. Better models: the dots bound to their letters (a position-aware
+   alignment, or the low level's placement extended to marks below the
+   line), more alignment rounds and variants, and a floor on a variant's
+   length; then the reader's own layouts (which xrs read as which letter)
+   as the alignment for a second round of training.
+2. The vocabulary made to count: why a dictionary word scores below a
+   free reading (the dictionary letters' penalties against the charset's).
+3. A way to turn the switch on from the Newton itself (an "Arabic" choice
+   in the Handwriting Recognition slip).
+4. Arabic letter prototypes: how the DTE tables are laid out
    (`ParaGraph.h`, `XrMatrix.h`), and a tool that builds them from samples
    run through the low level (needs several samples of each letter in each
    of its forms).

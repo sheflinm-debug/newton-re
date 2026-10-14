@@ -226,6 +226,15 @@ FHostTabletAutoCalibrate(RefArg /*rcvr*/, RefArg on)
 	return NILREF;
 }
 
+// HostRerecognizeConfig(): the ROM's configuration Recognize() uses when
+// given none (rcRerecognizeConfig), for a script to build on - say with
+// dictionaries of its own (tools/arabic-ink/to_ns.py --dictionary).
+static Ref
+FHostRerecognizeConfig(RefArg /*rcvr*/)
+{
+	return Rrcrerecognizeconfig;
+}
+
 static Ref
 FHostTabletQuickCalibrate(RefArg /*rcvr*/, RefArg on)
 {
@@ -284,6 +293,7 @@ HostRegisterViewFunctions(void)
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletSkew")), RefVar(MakeCFunction((void*) FHostTabletSkew, 4, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletAutoCalibrate")), RefVar(MakeCFunction((void*) FHostTabletAutoCalibrate, 1, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletQuickCalibrate")), RefVar(MakeCFunction((void*) FHostTabletQuickCalibrate, 1, nil)));
+	SetFrameSlot(functions, RefVar(Intern((char*) "HostRerecognizeConfig")), RefVar(MakeCFunction((void*) FHostRerecognizeConfig, 0, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletShutDowns")), RefVar(MakeCFunction((void*) FHostTabletShutDowns, 0, nil)));
 	SetFrameSlot(functions, RefVar(Intern((char*) "HostTabletCalibrationTarget")), RefVar(MakeCFunction((void*) FHostTabletCalibrationTarget, 0, nil)));
 	HostRegisterCardFunctions();
