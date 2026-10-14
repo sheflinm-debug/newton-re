@@ -202,6 +202,31 @@ Longer training (6 rounds, 5 variants a form) made the old models worse
 (13% of letters on trained words): the alignment drifts without the
 dots to anchor it.
 
+## Finding 4: the English lexicons, and the reader's own layouts (2026-10-14)
+
+A trace of where the Viterbi's symbols come from (`[cursive] xrlv
+symbols by kind`) showed the ROM's own lexicons in the vocabulary chain
+beside a script's dictionary, their English words spelt in codes that
+are now Arabic letters - "busboy", "hexagon", "areaway" read as Arabic
+with a dictionary's cheap penalties - and the ROM's number and
+punctuation sets offering most of the table's non-Latin codes as free
+symbols.  Both are left out under the host's table now (XrLex.cpp:
+dictionaries with ids below 200; Xrlv.cpp: only the alpha set).  It
+made no difference to the scores: the free-letter path (kind 8, tens of
+thousands of offers a word) is where the soup comes from.
+
+The reader's own layouts: with the free letters taken away
+(`NEWTON_XR_VOCAB_ONLY=1`) and each sample's word as its only vocabulary
+(`to_ns.py --dictionary-each`, `harvest.py --forced`), the reader lays
+the word out itself where a path exists - 3,350 of 10,126 ADAB samples
+(59% of the one-word labels, almost none of the two-word ones: the word
+gap is not found) - and `build_dte.py --from-reader` trains on those
+layouts.  The tables so built: trained words 45 of 50 read, 1 right,
+24% of letters (all samples) or 26 read, 4 right, 20% (the laid-out
+samples alone); held out 37 read, 0 right, 20%; the user's 42: 22 read,
+3 right, 12%.  A plateau: the models' discrimination, not their
+alignment, is the limit.
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware

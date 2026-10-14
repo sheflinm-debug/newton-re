@@ -540,10 +540,13 @@ def main():
     ap.add_argument("--min-samples", type=int, default=20)
     ap.add_argument("--min-cluster", type=int, default=30)
     ap.add_argument("--from-reader", action="store_true", help="start from the reader's own layouts (a --forced harvest)")
+    ap.add_argument("--reader-only", action="store_true", help="with --from-reader: train on the samples the reader laid out, none other")
     args = ap.parse_args()
     rng = random.Random(11)
 
     samples = load_samples(args.harvests, args.limit)
+    if args.reader_only:
+        samples = [s for s in samples if s.reader is not None]
     log("%d samples" % len(samples))
     models = initial_models(samples, rng, args.min_samples, args.from_reader)
     log("%d letter forms modelled" % len(models))
