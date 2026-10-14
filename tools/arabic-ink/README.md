@@ -17,6 +17,7 @@ is described in [docs/recognition/arabic.md](../../docs/recognition/arabic.md).
 | `build_dte.py` | Builds an Arabic letter table (DTEMain) from a harvest: letters aligned to the xrs, counts made nibbles on the ROM's scale. Load it with `NEWTON_DTE_MAIN=<file>`. |
 | `train_net.py` | Trains the host's own Arabic word engine - a bidirectional GRU over the pen's trajectory, CTC - on the samples, measures it on held-out words, and exports it to ONNX for the Newton host. Needs `torch` (CPU build: `pip install torch --index-url https://download.pytorch.org/whl/cpu`) and `onnxruntime`. |
 | `eval_net.py` | Reads a samples directory with a trained network through onnxruntime and scores the readings, freely and over a vocabulary: what the host engine will do, offline. |
+| `export_weights.py` | Writes a trained network as the one binary the host reads (`.anet`) and a check sample for ctest `recognition.ArabicNet`. Run the engine with `NEWTON_ARABIC_NET=<file>.anet`. |
 | `report.py` | Summarises the logs of replay runs: the reader's result codes and each sample's readings. |
 
 Each tool's header gives its inputs, outputs and exact invocation.

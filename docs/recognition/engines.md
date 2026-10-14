@@ -1,6 +1,11 @@
 # More word recognisers, chosen from the Handwriting slip
 
 Status: branch `hwr-engines`; the framework and the unistroke engine are built.
+A third engine, **Arabic** ('ARAB', button 9: a network of the host's own
+over the pen's trajectory, `recognition/ArabicRecognizer.h`), is on the
+fork's branch `arabic-recognition` - `docs/recognition/arabic.md`, "The
+engine" - and is the neural engine below in all but the ONNX Runtime: its
+network runs in plain C++ (`recognition/ArabicNet.h`).
 
 The owner wants handwriting engines beside the ROM's two (Rosetta for
 printing, ParaGraph for cursive), chosen from the Newton's own

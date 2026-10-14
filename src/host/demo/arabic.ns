@@ -1,0 +1,73 @@
+// The Arabic engine (recognition/ArabicRecognizer.h, ctest host.NewtonArabic):
+// the host's network reads a word written on the Notepad.
+//
+// The Handwriting Recognition slip's "Arabic" button is the engine's
+// choice (userConfiguration.hostWordEngine 9, then ReadCursiveOptions,
+// as unistroke.ns chooses its engine).  The word is the user's own "باب"
+// from the phone's capture page (tools/arabic-ink, sample
+// s\20261014T093113-2), scaled to a 40-pixel band on a base line at y = 220,
+// written right to left as it was written: the two teeth and the alif,
+// then the two dots.  The engine groups the four strokes into one word
+// (the pen came down again within the domain's delay each time), the
+// network reads them, and the paragraph takes the word: the page must
+// read "باب" (U+0628 U+0627 U+0628).
+//
+//   NEWTON_ARABIC_NET=build/arabic-ink/arabic-net.anet NEWTON_TRACE_ARABIC=1
+//       build/host/host/newton --display 320x480 --script src/host/demo/arabic.ns --headless 120
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+name := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+arabicStroke := func(points)
+  begin
+    PenDown(points[0], points[1]);
+    for i := 2 to Length(points) - 2 by 2 do
+      PenMove(points[i], points[i + 1]);
+    PenUp();
+  end;
+
+// the text of the first paragraph under a view
+arabicText := func(v)
+  begin
+    local found := nil;
+    if BAnd(v.viewClass, 0xFFFF) = 81 and IsString(v.text) and StrLen(v.text) > 0 then
+      found := v.text
+    else
+      foreach child in v:ChildViewFrames() do
+        if not found then
+          found := call arabicText with (child);
+    found;
+  end;
+
+arabicCodes := func(s)
+  begin
+    local out := "";
+    for i := 0 to StrLen(s) - 1 do
+      out := out & (if i > 0 then " " else "") & NumberStr(Ord(s[i]));
+    out;
+  end;
+
+arabicWord := [
+  [110, 208, 110, 207, 111, 207, 112, 208, 112, 209, 112, 210, 112, 211, 112, 212, 112, 213, 112, 214, 112, 215, 111, 215, 111, 216, 110, 216, 109, 217, 108, 217, 108, 218, 107, 218, 106, 218, 105, 218, 104, 218, 103, 218, 102, 219, 101, 219, 100, 219, 99, 219, 99, 218, 98, 218, 97, 218, 96, 218, 95, 218, 94, 217, 93, 217, 92, 217, 91, 217, 91, 216, 91, 215, 91, 214, 91, 213, 91, 212, 91, 211, 92, 210, 92, 209, 92, 208, 92, 207, 92, 206, 92, 205, 92, 204, 92, 203, 92, 202, 92, 201, 92, 200, 92, 199, 92, 198, 92, 197, 92, 196, 92, 195, 92, 194, 92, 193, 91, 192, 91, 191, 91, 190, 91, 189, 92, 189, 92, 188, 92, 189],
+  [80, 209, 79, 210, 79, 211, 80, 211, 81, 212, 81, 213, 82, 213, 82, 214, 82, 215, 81, 215, 81, 216, 80, 216, 79, 217, 78, 218, 77, 218, 76, 218, 75, 219, 74, 219, 73, 219, 72, 219, 70, 220, 69, 220, 68, 221, 66, 221, 65, 221, 64, 221, 63, 221, 62, 220, 61, 220, 61, 219, 60, 219, 60, 218, 60, 217, 60, 216, 60, 215, 60, 214, 60, 213, 60, 211, 60, 210, 60, 209, 61, 209, 61, 208, 61, 207, 62, 207, 63, 207, 64, 207, 64, 208],
+  [73, 223, 73, 222, 72, 222],
+  [104, 223]];
+
+call walkSetup with (name, func() begin
+    userConfiguration.hostWordEngine := 9;
+    userConfiguration.letterSetSelection := 2;
+    ReadCursiveOptions();
+    Print("arabic: the engine is" && userConfiguration.hostWordEngine);
+    foreach s in arabicWord do call arabicStroke with (s);
+    IdleStrokes();
+    call waitFor with ("arabic: the word", func() call arabicText with (GetRoot()), func() begin
+        local text := call arabicText with (GetRoot());
+        // (compared as codes: NewtonScript's \u escape is not C's)
+        local ok := StrEqual(call arabicCodes with (text), "1576 1575 1576");
+        Print("arabic: the page reads " & call arabicCodes with (text) & (if ok then ": ok" else ": FAILED (wanted 1576 1575 1576)"));
+        Print("arabic: done, " & (if ok then "0" else "1") & " failed");
+        HostQuit();
+      end, 60);
+  end);
+Print("arabic: the script is loaded");

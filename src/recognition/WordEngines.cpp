@@ -9,6 +9,7 @@
 #include "Recognizer.h"
 #include "Words.h"			// gWordID
 #include "UnistrokeRecognizer.h"
+#include "ArabicRecognizer.h"
 #include "Protocols.h"
 #include "Frames.h"
 #include "Locale.h"			// GetPreference, SetPreference
@@ -32,6 +33,8 @@ static const SWordEngine kWordEngines[] =
 {
 	{ kUnistrokeType, kFirstHostWordEngine, "TUnistrokeRecognizer", "Unistroke (single strokes)",
 	  "Unistroke Word-rec", false, RegisterUnistrokeRecognizer, UnistrokeExample },
+	{ kArabicType, kFirstHostWordEngine + 1, "TArabicRecognizer", "Arabic (network)",
+	  "Arabic Word-rec", false, RegisterArabicRecognizer, nil },
 };
 static const long kWordEngineCount = sizeof(kWordEngines) / sizeof(kWordEngines[0]);
 

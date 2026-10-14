@@ -26,6 +26,7 @@ add_library(recognition STATIC
     Unistroke.cpp
     UnistrokeRecognizer.cpp
     ArabicNet.cpp
+    ArabicRecognizer.cpp
     WRecDomain.cpp
     Unit.cpp
     UnitPublic.cpp

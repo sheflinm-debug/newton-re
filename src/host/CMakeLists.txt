@@ -1277,6 +1277,17 @@ set_tests_properties(host.NewtonWrite PROPERTIES TIMEOUT 180
                      PASS_REGULAR_EXPRESSION "reads \"ton to\": ok.*write: done, 0 failed"
                      FAIL_REGULAR_EXPRESSION "FAILED|waited in vain")
 
+# the Arabic engine (recognition/ArabicRecognizer.h, src/host/demo/arabic.ns):
+# the host's network reads the user's "باب" written on the Notepad; wants a
+# trained network (NEWTON_ARABIC_NET, as recognition.ArabicNet does)
+if(EXISTS "${NEWTON_ARABIC_NET}.anet")
+    add_test(NAME host.NewtonArabic COMMAND newton --display 320x480 --headless 120
+             --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/arabic.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(host.NewtonArabic PROPERTIES TIMEOUT 180 ENVIRONMENT "NEWTON_ARABIC_NET=${NEWTON_ARABIC_NET}.anet;NEWTON_TRACE_ARABIC=1"
+                         PASS_REGULAR_EXPRESSION "arabic: done, 0 failed"
+                         FAIL_REGULAR_EXPRESSION "FAILED|waited in vain")
+endif()
+
 # a word scrubbed out with the pen (demo/scrub.ns)
 add_test(NAME host.NewtonScrub COMMAND newton --display 320x480 --headless 90
          --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/scrub.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)

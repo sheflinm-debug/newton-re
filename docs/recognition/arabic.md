@@ -262,6 +262,33 @@ is next, then the engine: the model run in host code on each word the
 ink grouping makes, the reading posted as the Newton's own recognisers
 post theirs, an "Arabic" button in the Handwriting Recognition slip.
 
+## The engine (2026-10-14)
+
+`recognition/ArabicNet.h` runs the network in the host's own C++ - the
+.anet file `tools/arabic-ink/export_weights.py` writes (the alphabet and
+the arrays, little-endian float32), the features made as the training
+made them, the two bidirectional GRU layers as ONNX defines them, the
+greedy decoding; ctest `recognition.ArabicNet` holds it to the Python
+model on a sample (features within 1e-4, logits within 1e-3, the same
+reading - 5e-7 and 3e-6 in practice).  `recognition/ArabicRecognizer.h`
+is the word engine, 'ARAB', the "Arabic (network)" button (9) of the
+Handwriting Recognition slip (`WordEngines.cpp`'s table): strokes
+grouped into words by the clock as the ink-only engine groups them, a
+closed word read by the network, its reading the unit's one
+interpretation, a word, scored by the network's mean confidence;
+`NEWTON_ARABIC_NET=<file>.anet` names the network, `NEWTON_TRACE_ARABIC=1`
+prints each reading.  ctest `host.NewtonArabic`
+(`src/host/demo/arabic.ns`): the user's own "باب", written on the
+Notepad at 40 pixels high, is typed into the note as "باب".
+
+NOT YET: alternatives for the corrector (the greedy reading alone); a
+vocabulary in the engine (the Newton's dictionaries are eight-bit and
+Latin-shaped; the engine will carry its own word list first); the word
+gap judged by the writing rather than the clock; Arabic glyphs in the
+ROM's fonts (the text is right in the note; the screen cannot yet draw
+it); the marks and the letters the training had no samples of; a way to
+choose the network from the Host panel rather than the environment.
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware
