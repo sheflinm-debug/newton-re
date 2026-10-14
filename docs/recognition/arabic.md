@@ -88,6 +88,42 @@ page's first paragraph at its margin wherever the ink was, so the
 paragraph's own bounds do not show the box; the trace line "[cursive]
 word box" does.)
 
+## The letter table's format (2026-10-14)
+
+What an Arabic letter table has to be, read from the code that reads the
+ROM's (`XrMatrix.cpp`'s `CountSym` and `XrMatch`, `ParaGraph.cpp`'s
+`GetSymDescriptor`) and **established by** `tools/arabic-ink/dte.py
+check`: the US ROM's DTEMain decoded into JSON and encoded again comes
+back byte for byte (91 letters, 3499 prototypes, 274596 bytes).  The
+layout is in the tool's header.  In short: a descriptor per character
+code, each up to 16 variants of up to 12 prototypes; a prototype is 0x4c
+bytes, chiefly five tables of nibbles - what each of the 64 xr types,
+16 heights, 16 shifts, 16 links and 32 orientations is worth there - and
+an xr read against it scores the five nibbles its own values pick,
+summed, against a cost of 50 for reading it.  That is an additive model of
+independent features, which is what makes building a table from samples
+straightforward: each nibble is in effect a scaled log-likelihood of that
+feature at that point of the letter.
+
+Not yet understood, and kept as they are: a descriptor's bytes 1 and 3,
+its byte 2 (the letter's own code for 83 of 91, otherwise another
+letter's - space has ?, _ has -, six codes above 0x7e have v), two bytes
+per variant at +0x34/+0x44 (by their values the height zones it reaches:
+a 0x78/0x57, t 0xbd/0xce), and a prototype's first two bytes.
+
+The RAM replacement (`SetRamParaData`, `gParaRamData.fDTEMain`) does not
+replace a letter: `GetSymDescriptor` counts the RAM table's variants after
+the ROM's, sixteen in all.  An Arabic letter set will swap the whole
+table instead (a DEVIATION to come).  The other resources the reader
+reads - PPDMain (the post-processing rules, `XrPost.h`) and the trigrams -
+are not yet decoded.
+
+The ADAB database (El Abed et al., IfN/REGIM; IEEE DataPort, open access
+for non-commercial research) is to be the main source of samples: 937
+Tunisian place names written by many writers, the pen's trajectory in
+InkML with UPX labels.  It is not redistributed: a script will convert a
+copy the user downloads into `build/adab/`.
+
 ## Next
 
 1. A way to turn the switch on from the Newton itself (an "Arabic" choice

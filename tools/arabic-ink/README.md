@@ -9,6 +9,7 @@ is described in [docs/recognition/arabic.md](../../docs/recognition/arabic.md).
 | `capture.html` | The capture page: prompts a word, takes stylus strokes (points, time, pressure; palm rejection by ignoring touch unless allowed), saves each sample. Served by `serve.py`; also publishable as a claude.ai artifact, where it saves to the artifact's own store. |
 | `serve.py` | Serves `capture.html` to a phone or tablet on the local network and writes each sample to `build/arabic-ink/samples/` (git-ignored). |
 | `to_ns.py` | Turns the samples into a NewtonScript replay script that hands each one to `Recognize()` with the cursive letter set; `--mirror` flips them left to right first. |
+| `dte.py` | Decodes ParaGraph's letter table (DTEMain) into JSON and encodes it back; `check` proves the round trip on the ROM's table is exact; `show` prints one letter's variants and prototypes. |
 | `report.py` | Summarises the logs of replay runs: the reader's result codes and each sample's readings. |
 
 Each tool's header gives its inputs, outputs and exact invocation.
