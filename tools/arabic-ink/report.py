@@ -60,7 +60,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("logs", nargs="+")
     ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--arabic", action="store_true",
+                    help="the readings are an Arabic table's (arabic.py's Latin codes): decode them and score them against the words")
     args = ap.parse_args()
+    if args.arabic:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import arabic
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
@@ -75,17 +80,51 @@ def main():
         if args.markdown:
             print("| # | word | words found | readings |")
             print("|---|---|---|---|")
+        top1 = top5 = scored = 0
+        letter_acc = 0.0
         for n in sorted(words):
             sid, word = words[n]
             rs = readings.get(n, [])
             got = [r for r in rs if r]
+            if args.arabic:
+                # (the three accented codes may come through the host's console as
+                # Mac Roman bytes read as Latin-1, as UTF-8, or as '?')
+                alts = [arabic.decode(a.strip().replace("Ã¤", "ä").replace("Ã¥", "å").replace("Ã¶", "ö"))
+                        for r in got for a in r.split("|")]
+                target = arabic.fold(word)
+                scored += 1
+                if alts:
+                    if alts[0] == target:
+                        top1 += 1
+                    if target in alts[:5]:
+                        top5 += 1
+                    d = _levenshtein(alts[0], target)
+                    letter_acc += 1.0 - d / float(max(len(target), len(alts[0]), 1))
+                got = [" | ".join(alts)] if alts else []
+                word = target
             text = " / ".join(got) if got else "nothing"
             if args.markdown:
                 print("| %d | %s | %d | %s |" % (n, word, len(got), text.replace("|", "\\|")))
             else:
                 print("%3d  %-8s  %s" % (n, word, text))
+        if args.arabic and scored:
+            print()
+            print("accuracy over %d samples: first reading right %d (%.1f%%), right among the first five %d (%.1f%%), letters right in the first reading %.1f%%"
+                  % (scored, top1, 100.0 * top1 / scored, top5, 100.0 * top5 / scored, 100.0 * letter_acc / scored))
         print()
     return 0
+
+
+def _levenshtein(a, b):
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
 
 
 if __name__ == "__main__":

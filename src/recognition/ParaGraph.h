@@ -210,6 +210,7 @@ typedef UByte dte_sym_header_type;
 // set up; with `trigrams`, the trigram header made too.  ==> 0, or 1
 // when there was no room.
 long	ReadDteResource(const char* name, short which, Handle* dti, Handle* trigrams, ULong makeTrigrams);	// ROM 0x002fe68c ReadDteResource__FPcsPPvT3Ui
+UByte*	HostDTEMain(void);									// DEVIATION: the host's own letter table (NEWTON_DTE_MAIN), or nil for the ROM's
 Boolean	SetUpDteAddres(DTIHeader** dti, void* ramDTE, ULong ramDTEMain, void* a8, Handle pdf, ULong ramPDF, void* c4,
 					   UByte* dteMain, UByte* ramDTEMainPtr, void* ac, UByte* ppdMain, void* c8);	// ROM 0x002d4eec SetUpDteAddres__FPPvPPcN52PvN48 - ==> whether the prototype header could not be made
 Handle	CreatePDFHeader(UByte* ppd);						// ROM 0x002d4d3c CreatePDFHeader__FPv

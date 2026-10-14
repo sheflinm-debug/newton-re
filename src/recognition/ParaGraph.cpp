@@ -16,6 +16,8 @@
 #include "Ortho.h"
 #include "XrReader.h"		// __ctype
 #include <string.h>
+#include <stdio.h>			// (the host's letter table, NEWTON_DTE_MAIN)
+#include <stdlib.h>
 
 extern const unsigned char	alpha_charset_eng[28];
 extern const unsigned char	alpha_charset_swe[32];
@@ -34,6 +36,15 @@ extern const unsigned char	_xlower[128];
 // English letters - which SetOsRecTableAndCharSet itself never pairs)
 const UByte*	p_os_rec_ctbl = os_rec_ctbl_intl;
 const char*		alpha_charset = (const char*) alpha_charset_eng;
+// the character classes in use (DEVIATION: the host's letter table brings
+// its own, gHostCtype)
+static const UByte*	p_xctype = _xctype;
+// the host letter table's alphabet (HostDTEMain): its codes as the
+// character set, each a lower-case letter, and the codes above 0x7e their
+// own engine codes (the ROM's os-to-rec tables map Mac Roman's letters)
+static char		gHostAlphaCharset[0x90];
+static UByte	gHostCtype[256];
+static UByte	gHostOsRecTable[128];
 
 // ROM 0x0c105474 (unnamed)
 ParaRamData		gParaRamData;
@@ -242,7 +253,7 @@ int
 IsUpper(int c)
 {
 	c &= 0xff;
-	return (_xctype[c] & 0x01) != 0;
+	return (p_xctype[c] & 0x01) != 0;
 }
 
 
@@ -251,7 +262,7 @@ int
 IsLower(int c)
 {
 	c &= 0xff;
-	return (_xctype[c] & 0x02) != 0;
+	return (p_xctype[c] & 0x02) != 0;
 }
 
 
@@ -260,7 +271,7 @@ int
 IsPunct(int c)
 {
 	c &= 0xff;
-	return (_xctype[c] & 0x10) != 0;
+	return (p_xctype[c] & 0x10) != 0;
 }
 
 
@@ -319,6 +330,16 @@ ToLower(int c)
 void
 SetOsRecTableAndCharSet(int which)
 {
+	// DEVIATION: with the host's letter table in use the alphabet is the
+	// table's own - every code it has a descriptor for, a lower-case letter
+	// (HostDTEMain makes the three tables; tools/arabic-ink/arabic.py)
+	if (HostDTEMain() != nil)
+	{
+		p_os_rec_ctbl = gHostOsRecTable;
+		alpha_charset = gHostAlphaCharset;
+		p_xctype = gHostCtype;
+		return;
+	}
 	if (which == 0)
 	{
 		p_os_rec_ctbl = os_rec_ctbl_eng;
@@ -353,6 +374,69 @@ OSToRec(int c)
 	T h e   l e t t e r   t a b l e
 ------------------------------------------------------------------------------*/
 
+// DEVIATION: NEWTON_DTE_MAIN=<file> puts a letter table of the host's in
+// place of the ROM's (a DTEMain binary, tools/arabic-ink/dte.py encode;
+// docs/recognition/arabic.md), read once and kept for the run.  ==> the
+// table, or nil for the ROM's own.
+UByte*
+HostDTEMain(void)
+{
+	static UByte* sHostDTEMain = nil;
+	static Boolean sLooked = false;
+	if (!sLooked)
+	{
+		sLooked = true;
+		const char* path = getenv("NEWTON_DTE_MAIN");
+		if (path != nil && *path != 0)
+		{
+			FILE* f = fopen(path, "rb");
+			if (f != nil)
+			{
+				fseek(f, 0, SEEK_END);
+				long size = ftell(f);
+				fseek(f, 0, SEEK_SET);
+				if (size > 1028 && (sHostDTEMain = (UByte*) malloc(size)) != nil
+				 && fread(sHostDTEMain, 1, size, f) != (size_t) size)
+				{
+					free(sHostDTEMain);
+					sHostDTEMain = nil;
+				}
+				fclose(f);
+			}
+			if (sHostDTEMain == nil)
+				fprintf(stderr, "[paragraph] cannot read the letter table %s\n", path);
+			else
+			{
+				// the alphabet: the codes the table has descriptors for
+				// (0x21..0xa2, the engine's range; never the space, the
+				// apostrophe - which the Viterbi treats as its own - or a
+				// digit, which the digit reader has its say over)
+				memcpy(gHostCtype, _xctype, sizeof(gHostCtype));
+				long n = 0;
+				for (ULong code = 0x21; code <= 0xa2 && n < (long) sizeof(gHostAlphaCharset) - 1; code++)
+				{
+					if (code == '\'' || (code >= '0' && code <= '9'))
+						continue;
+					if (GetBigEndianWord(sHostDTEMain + 4 + code * 4) == 0)
+						continue;
+					gHostAlphaCharset[n++] = (char) code;
+					gHostCtype[code] = 0x02;			// a lower-case letter, nothing else
+				}
+				gHostAlphaCharset[n] = 0;
+				memset(gHostOsRecTable, 0, sizeof(gHostOsRecTable));
+				for (ULong code = 0x7f, k = 0; code <= 0xa2 && k < 0x3f; code++, k++)
+				{
+					gHostOsRecTable[k * 2] = (UByte) code;
+					gHostOsRecTable[k * 2 + 1] = (UByte) code;
+				}
+				fprintf(stderr, "[paragraph] the letter table is %s: %ld letters\n", path, n);
+			}
+		}
+	}
+	return sHostDTEMain;
+}
+
+
 // ROM 0x002fe68c ReadDteResource__FPcsPPvT3Ui
 // DEVIATION: the ROM's handle is the resource's size and is used as the
 // DTE header where it lies; the host's is a DTIHeader after the handle
@@ -365,6 +449,9 @@ ReadDteResource(const char* /*name*/, short /*which*/, Handle* dti, Handle* trig
 	*trigrams = nil;
 	UByte* header = (UByte*) BinaryData(FGetDTEHeader(RefVar()));
 	UByte* dteMain = (UByte*) BinaryData(FGetDTEMain(RefVar()));
+	// DEVIATION: the host's letter table in place of the ROM's (HostDTEMain)
+	if (HostDTEMain() != nil)
+		dteMain = HostDTEMain();
 	UByte* trigramData = (UByte*) BinaryData(FGetDTETrigram(RefVar()));
 	Handle h = NewHandle(kHWRHeader + sizeof(DTIHeader));
 	if (h != nil)

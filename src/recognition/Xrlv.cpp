@@ -12,6 +12,7 @@
 #include "CursiveReader.h"
 #include "XrDomains.h"
 #include "Dictionaries.h"
+#include "ParaGraph.h"			// HostDTEMain
 
 #include <string.h>
 
@@ -65,6 +66,10 @@ xrlv(xrdata_type* xr, RWG_type* rwg, rc_type* rc)
 		// reads its word at 0x90 wherever nought points)
 		TrigramHeader* trigrams = (TrigramHeader*) rc->fTrigrams;
 		if (trigrams == nil || trigrams->fTrigram == nil)
+			d->flags &= ~4;
+		// DEVIATION: the ROM's trigrams are English's; with the host's letter
+		// table in use they are left out, every letter weighed alike
+		if (HostDTEMain() != nil)
 			d->flags &= ~4;
 		if (rc->fChain == nil)
 			d->flags &= ~8;
@@ -460,9 +465,14 @@ XrlvSetLocations(xrlv_data_type* d, long everyXr)
 	xrd_el_type* e = (xrd_el_type*) d->xr->fElements;
 	long k = 0;
 	long i;
+	// DEVIATION: with the host's letter table in use every xr is a location
+	// - the low level's "last in its letter" marks (attrib 1) are its
+	// guesses at where Latin letters end, and a table built with free letter
+	// boundaries (tools/arabic-ink/build_dte.py) needs the same freedom here
+	Boolean anyXr = HostDTEMain() != nil;
 	for (i = 0; i < n; i++, e++)
 	{
-		if ((e->attrib & 1) == 0)
+		if ((e->attrib & 1) == 0 && !anyXr)
 			continue;
 		if (everyXr != 0 && 0 < i && i < n - 1)
 			continue;
