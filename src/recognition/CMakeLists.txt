@@ -82,6 +82,7 @@ add_library(recognition STATIC
     LowDArcs.cpp
     LowTables.cpp
     CursiveReader.cpp
+    XrDump.cpp
     Chunk.cpp
     ChunkTrace.cpp
     ChunkLowObj.cpp

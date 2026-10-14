@@ -10,6 +10,9 @@ is described in [docs/recognition/arabic.md](../../docs/recognition/arabic.md).
 | `serve.py` | Serves `capture.html` to a phone or tablet on the local network and writes each sample to `build/arabic-ink/samples/` (git-ignored). |
 | `to_ns.py` | Turns the samples into a NewtonScript replay script that hands each one to `Recognize()` with the cursive letter set; `--mirror` flips them left to right first. |
 | `dte.py` | Decodes ParaGraph's letter table (DTEMain) into JSON and encodes it back; `check` proves the round trip on the ROM's table is exact; `show` prints one letter's variants and prototypes. |
+| `adab.py` | Converts a downloaded copy of the ADAB database (`build/adab/`) into samples (`build/arabic-ink/adab/set_N/`). ADAB is not redistributed: see below. |
+| `harvest.py` | Runs a directory of samples through the cursive reader in batches with `NEWTON_XR_DUMP` on, keeping the xrs the reader cut each sample into (`build/arabic-ink/xrs/<name>/`). |
+| `xrs.py` | Reads a harvest back, joined to the samples' words (the builder's input); `summary` prints its statistics. |
 | `report.py` | Summarises the logs of replay runs: the reader's result codes and each sample's readings. |
 
 Each tool's header gives its inputs, outputs and exact invocation.
@@ -41,3 +44,27 @@ CSS pixels from the slate's top left, t in milliseconds from the sample's
 first point), `slate` (`width`, `height`, and the guide lines `topLine` and
 `baseLine`, which `to_ns.py` scales by), `devicePixelRatio`,
 `pointerTypes`, `userAgent`, `createdAt`.
+
+## ADAB
+
+The ADAB database (the Arabic handwriting DataBase of the IfN, TU
+Braunschweig, and REGIM, University of Sfax) is open access on
+[IEEE DataPort](https://ieee-dataport.org/open-access/adab-database) for
+non-commercial research.  Downloading it needs a free IEEE account, and
+its terms ask that its use be acknowledged by citing the references the
+DataPort page lists, among them:
+
+- H. El Abed, M. Kherallah, V. Märgner, A. M. Alimi, "On-line Arabic
+  handwriting recognition competition: ADAB database and participating
+  systems", International Journal on Document Analysis and Recognition
+  (IJDAR), 2011.
+- the 2011 ICDAR paper and the 2012 Springer chapter on the same page.
+
+It is not redistributed with this repository.  Unpack `ADAB DATABASE.zip`
+so that `build/adab/set_1/inkml/` exists, then:
+
+```powershell
+python tools\arabic-ink\adab.py                                   # 15158 samples, about 7 minutes
+python tools\arabic-ink\harvest.py build\arabic-ink\adab\set_1    # and set_2, set_3: about 10 minutes each
+python tools\arabic-ink\xrs.py summary build\arabic-ink\xrs\set_1
+```

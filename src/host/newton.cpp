@@ -203,6 +203,7 @@
 #include "HostFlash.h"
 #include "HostHeapCheck.h"
 #include "HostSoundDriver.h"
+#include "XrDump.h"
 #include "HostEchoServer.h"
 #include "HostCellular.h"
 #include "HostGPS.h"
@@ -526,6 +527,26 @@ FHostQuit(RefArg /*rcvr*/)
 }
 
 
+// HostXrDumpMark(tag): a line of the script's own put into the record of
+// the cursive reader's xrs (NEWTON_XR_DUMP, recognition/XrDump.h), to say
+// which sample the words after it came from.  ASCII tags only.  DEVIATION.
+static Ref
+FHostXrDumpMark(RefArg /*rcvr*/, RefArg tag)
+{
+	if (!IsString(tag))
+		ThrowBadTypeWithFrameData(kNSErrNotAString, tag);
+	char text[256];
+	long n = Length(tag) / 2 - 1;
+	const UniChar* chars = (const UniChar*) BinaryData(tag);
+	long k = 0;
+	for (long i = 0; i < n && k < (long) sizeof(text) - 1; i++)
+		text[k++] = chars[i] < 0x80 ? (char) chars[i] : '?';
+	text[k] = 0;
+	XrDumpMark(text);
+	return NILREF;
+}
+
+
 // HostInclude(name): the NewtonScript file of that name in the --script
 // file's own directory run, as the script itself is - which is how the
 // demos share src/host/demo/common.ns (the pen and keys, the waits on a
@@ -670,6 +691,7 @@ NewtonPreMain(void)
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostPenReplayDone")), RefVar(MakeCFunction((void*) FHostPenReplayDone, 0, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostPenTap")), RefVar(MakeCFunction((void*) FHostPenTap, 2, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostInclude")), RefVar(MakeCFunction((void*) FHostInclude, 1, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostXrDumpMark")), RefVar(MakeCFunction((void*) FHostXrDumpMark, 1, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostCPUTime")), RefVar(MakeCFunction((void*) FHostCPUTime, 0, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostThreadCPUTime")), RefVar(MakeCFunction((void*) FHostThreadCPUTime, 0, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostStoreFile")), RefVar(MakeCFunction((void*) FHostStoreFile, 0, nil)));

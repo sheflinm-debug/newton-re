@@ -18,6 +18,7 @@
 #include "LowLevel.h"
 #include "Ortho.h"
 #include "ByteOrder.h"
+#include "XrDump.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -176,6 +177,9 @@ GCTryToRecognize(PS_point_type* trace, GCWordDescrType* word, rc_type* rc, GCGro
 					}
 					ChunkWriteParamCtx(chunk, rc, &xr, readings);
 					ChunkPatchXrdata(chunk);
+					// DEVIATION: the xrs recorded for building letter tables (XrDump.h)
+					if (XrDumping())
+						XrDumpWord(&xr, n);
 					if (2 < xr.fLength)
 					{
 						UShort saved8 = RCGetH(rc, 0x08);

@@ -16,8 +16,11 @@ Outputs:  a NewtonScript file (default build/arabic-ink/replay.ns, or
           replay-mirrored.ns with --mirror) and, beside it, an index
           <out>.tsv of sample number, file id and word (the script prints
           only numbers and ids: the host's console may not show Arabic).
+          Before each sample the script calls HostXrDumpMark(id), so a run
+          with NEWTON_XR_DUMP=<file> (recognition/XrDump.h) records which
+          sample each word's xrs came from (xrs.py reads the record).
 Usage:    python tools/arabic-ink/to_ns.py [--samples DIR] [-o FILE]
-              [--mirror] [--band PIXELS] [--word W]...
+              [--mirror] [--band PIXELS] [--word W]... [--start N --count N]
           build/host/host/newton --rom build/MP2x00US/rom.bin
               --display 320x480 --script build/arabic-ink/replay.ns
               --headless 300
@@ -26,8 +29,12 @@ Usage:    python tools/arabic-ink/to_ns.py [--samples DIR] [-o FILE]
 
 Geometry.  The sample is scaled so that the band between the slate's two
 guide lines is --band screen pixels tall (default 16, about the Newton's
-own cursive demo's x-height), its base line put on y = 200 and its left
-edge at x = 40, and the points are handed in eighths of a pixel (stroke
+own cursive demo's x-height) - or smaller, so that the word is no wider
+than --max-width pixels (default 260: it must fit the 320-pixel screen, as
+a long word written on a MessagePad is written smaller; at 16 alone half of
+ADAB's place names ran off the screen, and the widest past the word
+segmenter's line, which overran its histogram) - its base line put on
+y = 200 and its left edge at x = 40, and the points are handed in eighths of a pixel (stroke
 format 2, the tablet's own resolution) so nothing is lost to rounding.
 --mirror flips each sample left to right (x -> right edge - x) before
 that, so that Arabic, written right to left, reaches the recogniser as
@@ -60,13 +67,15 @@ def load(samples_dir, words):
     return out
 
 
-def convert(d, band, mirror):
+def convert(d, band, mirror, max_width):
     """The sample's strokes as Newton stroke arrays: v, h, v, h, ... in
     eighths of a pixel."""
     slate = d["slate"]
-    scale = band / float(slate["baseLine"] - slate["topLine"])
     xs = [s[i] for s in d["strokes"] for i in range(0, len(s), 4)]
     lo, hi = min(xs), max(xs)
+    scale = band / float(slate["baseLine"] - slate["topLine"])
+    if hi > lo:
+        scale = min(scale, max_width / float(hi - lo))
     strokes = []
     for s in d["strokes"]:
         pts = []
@@ -113,6 +122,7 @@ call walkSetup with (name, func() begin
     foreach n, s in arabicSamples do
       begin
         Print("arabic: sample" && n && s.id);
+        HostXrDumpMark(s.id);
         local ci := Recognize([MakeStrokeBundle(s.strokes, 2)], nil, nil);
         local readings := call arabicReadings with (ci);
         if Length(readings) = 0 then
@@ -137,11 +147,16 @@ def main():
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--mirror", action="store_true", help="flip each sample left to right")
     ap.add_argument("--band", type=float, default=16.0, help="screen pixels between the guide lines")
+    ap.add_argument("--max-width", type=float, default=260.0, help="the widest a word may be on the screen (pixels)")
     ap.add_argument("--word", action="append", default=[], help="only samples of this word (repeatable)")
+    ap.add_argument("--start", type=int, default=0, help="skip this many samples (in file order)")
+    ap.add_argument("--count", type=int, default=0, help="at most this many samples (0: all)")
     args = ap.parse_args()
 
     out = args.out or os.path.join(REPO, "build", "arabic-ink", "replay-mirrored.ns" if args.mirror else "replay.ns")
-    samples = load(args.samples, set(args.word))
+    samples = load(args.samples, set(args.word))[args.start:]
+    if args.count:
+        samples = samples[:args.count]
     if not samples:
         print("no samples in %s" % args.samples, file=sys.stderr)
         return 1
@@ -149,7 +164,7 @@ def main():
     common = os.path.relpath(os.path.join(REPO, "src", "host", "demo", "common.ns"), os.path.dirname(os.path.abspath(out)))
     lines = []
     for sid, d in samples:
-        strokes = convert(d, args.band, args.mirror)
+        strokes = convert(d, args.band, args.mirror, args.max_width)
         body = ",\n      ".join("[" + ", ".join(str(n) for n in s) + "]" for s in strokes)
         lines.append("  {id: \"%s\", strokes: [\n      %s]}" % (sid, body))
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
