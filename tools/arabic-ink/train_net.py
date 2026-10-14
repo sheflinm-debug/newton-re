@@ -32,7 +32,7 @@ Features, per point, after the word is scaled so its height (the 10th to
 dx, dy (to the previous point), the pen down flag, 1 at a stroke's
 first point, 1 at its last, and y above the base line (the 75th
 percentile of y).  A stroke's points are resampled to a step of 0.05
-of the height so slow and fast writing look alike.
+of the height (STEP) so slow and fast writing look alike.
 """
 
 import argparse
@@ -48,7 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import arabic   # noqa: E402
 
-STEP = 0.05
+STEP = 0.1
 FEATURES = 6
 
 
@@ -223,7 +223,7 @@ def main():
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--hidden", type=int, default=128)
-    ap.add_argument("--batch", type=int, default=32)
+    ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--limit", type=int, default=0, help="train on this many samples only")
     ap.add_argument("--validate-limit", type=int, default=500)
     ap.add_argument("--vocabulary", help="a samples directory whose words are the vocabulary the validation also decodes over")
@@ -235,6 +235,7 @@ def main():
         pass
     import torch
     torch.manual_seed(args.seed)
+    torch.set_num_threads(os.cpu_count() or 4)
     random.seed(args.seed)
 
     alphabet = make_alphabet()
@@ -265,7 +266,7 @@ def main():
         ", vocabulary of %d words" % len(vocabulary) if vocabulary else ""))
 
     model = build_model(torch, args.hidden, len(alphabet))
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    opt = torch.optim.Adam(model.parameters(), lr=2e-3)
     ctc = torch.nn.CTCLoss(blank=0, zero_infinity=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -299,8 +300,9 @@ def main():
 
     model.eval()
     example = torch.zeros((1, 50, FEATURES))
+    # (the TorchScript exporter: the newer one bakes the example's length in)
     torch.onnx.export(model, example, args.out, input_names=["features"], output_names=["logits"],
-                      dynamic_axes={"features": {1: "time"}, "logits": {1: "time"}}, opset_version=14)
+                      dynamic_axes={"features": {1: "time"}, "logits": {1: "time"}}, opset_version=14, dynamo=False)
     with open(os.path.splitext(args.out)[0] + ".json", "w", encoding="utf-8") as f:
         json.dump({"alphabet": ["" if c is None else c for c in alphabet], "features": FEATURES, "step": STEP,
                    "format": "tools/arabic-ink/train_net.py"}, f, ensure_ascii=False, indent=1)
