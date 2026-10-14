@@ -61,6 +61,7 @@ import xrs as X # noqa: E402
 NEG = -10 ** 9
 MATCH_COST = 50
 MAX_PROTOS = 12
+MIN_PROTOS = 2
 FEATURES = (("type", X.TYPE, 64), ("height", X.HEIGHT, 16), ("shift", X.SHIFT, 16), ("link", X.LINK, 16), ("orient", X.ORIENT, 32))
 
 # a rough width per letter, for the first layout by x (forms adjust it)
@@ -188,8 +189,12 @@ class Prototype:
                     nib[r >= floor] = value
                 nib[c == 0] = np.minimum(nib[c == 0], 4)
             self.nibbles[name] = nib
+        # (a position nearly always read is required; one read in most
+        # samples costs a little to skip; the rest are free - gentler than
+        # the ROM's 18s, so that a letter of many prototypes is not undercut
+        # by chains of letters of one)
         f = self.n / float(letter_samples) if letter_samples else 0.0
-        self.skip = 18 if f >= 0.85 else (10 if f >= 0.6 else 0)
+        self.skip = 18 if f >= 0.92 else (8 if f >= 0.65 else 0)
         self.break_only = self.n >= 8 and self.breaks >= 0.9 * self.n
 
 
@@ -208,17 +213,13 @@ class Variant:
 
 
 def medoid_length(subseqs, rng):
-    """The length of the subsequence nearest all the others by the edit
-    distance of their type strings (a sample of them), clamped to the
-    prototype limit."""
-    strings = [tuple(x[X.TYPE] for x in s) for s in subseqs]
-    pool = strings if len(strings) <= 120 else rng.sample(strings, 120)
-    best, best_d = None, None
-    for a in pool:
-        d = sum(levenshtein(a, b) for b in pool)
-        if best_d is None or d < best_d:
-            best, best_d = a, d
-    return max(1, min(MAX_PROTOS, len(best)))
+    """How many prototypes a letter form's model gets: enough for three
+    quarters of its subsequences (the dots a letter carries, placed after
+    it, must have positions of their own, or the rounds of alignment can
+    never take them in), at least MIN_PROTOS, at most the prototype limit."""
+    lengths = sorted(len(s) for s in subseqs)
+    want = lengths[min(len(lengths) - 1, int(len(lengths) * 0.75))]
+    return max(MIN_PROTOS, min(MAX_PROTOS, want))
 
 
 def levenshtein(a, b):
@@ -429,7 +430,7 @@ def split_variants(samples, models, assignments, max_variants, rng, min_cluster)
         if len(keep) < 2:
             new[key] = variants
             continue
-        new[key] = [Variant(max(1, min(MAX_PROTOS, len(md)))) for md in keep]
+        new[key] = [Variant(max(MIN_PROTOS, min(MAX_PROTOS, len(md) + 1))) for md in keep]
         for v, md in zip(new[key], keep):
             v.medoid = md
     # a first count for the new variants: each subsequence to the nearest medoid

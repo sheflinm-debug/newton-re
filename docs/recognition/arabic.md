@@ -180,6 +180,28 @@ any xr for a small gain, and chains of them outscore the right word; and
 the reader's own rules and penalties (`XrPost`, the class and break
 penalties) were tuned for Latin letters.
 
+## Finding 3: the models must be long enough (2026-10-14)
+
+An oracle test - 50 of the words the table was trained on, with the
+vocabulary - read 35, one of them right, 21% of letters: so the loss is
+in how the models meet the reader, not in generalisation.  Two causes
+tried:
+
+- **Model lengths.**  A variant was as long as the medoid of its first
+  rough slices, so a dotted letter's model was one prototype - the tooth -
+  and the alignment rounds could never take the dots in (a model cannot
+  grow).  Sized instead for three quarters of the slices, two prototypes
+  at least, with skip costs 18/8/0 at 92%/65% matched (`build_dte.py`):
+  initial ب went from one prototype to four, and the oracle test read 43,
+  3 right, 5 among the first five, 23% of letters; held out, 42 of 50
+  read, 1 right, 23% of letters; the user's 42: 29 read, 2 right, 13%.
+- **The free letters' cost** (`NEWTON_CHARSET_PEN`, Xrlv.cpp, the ROM's 4
+  a position): 8 read fewer words and changed nothing else.  Left at 4.
+
+Longer training (6 rounds, 5 variants a form) made the old models worse
+(13% of letters on trained words): the alignment drifts without the
+dots to anchor it.
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware

@@ -13,6 +13,7 @@
 #include "XrDomains.h"
 #include "Dictionaries.h"
 #include "ParaGraph.h"			// HostDTEMain
+#include <stdlib.h>				// (NEWTON_CHARSET_PEN)
 
 #include <string.h>
 
@@ -522,6 +523,16 @@ XrlvGetCharset(xrlv_data_type* d)
 		{ 0x20, d->rc->fOtherCharset, 0x40, 4 },
 		{ 4, d->rc->fMathCharset, 0x30, 4 }
 	};
+	// DEVIATION: with the host's letter table in use a letter read outside
+	// any dictionary may be made dearer than the ROM's 4 a position
+	// (NEWTON_CHARSET_PEN), so that a vocabulary's words outrank chains of
+	// free letters (docs/recognition/arabic.md)
+	static int sCharsetPen = -1;
+	if (sCharsetPen < 0)
+	{
+		const char* value = HostDTEMain() != nil ? getenv("NEWTON_CHARSET_PEN") : nil;
+		sCharsetPen = value != nil && atoi(value) > 0 ? atoi(value) : 4;
+	}
 	if ((sets & 1) != 0)
 	{
 		const UByte* c = (const UByte*) d->rc->fAlphaCharset;
@@ -529,7 +540,7 @@ XrlvGetCharset(xrlv_data_type* d)
 		{
 			p->sym = *c;
 			p->attr = 0x10;
-			p->pen = 4;
+			p->pen = (UByte) sCharsetPen;
 			p->status = 3;
 			n++;
 			p++;
