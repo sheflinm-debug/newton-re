@@ -9,6 +9,7 @@
 #include "XrDump.h"
 #include "CursiveReader.h"		// xrdata_type
 #include "LowLevel.h"			// xrd_el_type, XrGetH
+#include "XrReader.h"			// RWG_type, RWS_type
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -77,5 +78,32 @@ XrDumpWord(const xrdata_type* xr, long nPoints)
 				XrGetH(x->box + kXrLeft), XrGetH(x->box + kXrTop), XrGetH(x->box + kXrRight), XrGetH(x->box + kXrBottom));
 	}
 	fputs("]}\n", f);
+	fflush(f);
+}
+
+
+void
+XrDumpGraph(const RWG_type* rwg)
+{
+	FILE* f = DumpFile();
+	if (f == nullptr || rwg == nullptr || rwg->rws == nullptr)
+		return;
+	fputs("{\"graph\": [[", f);
+	bool firstSym = true;
+	for (long i = 0; i < rwg->size; i++)
+	{
+		const RWS_type* s = &rwg->rws[i];
+		if (s->type == 4)
+		{
+			fputs("], [", f);
+			firstSym = true;
+		}
+		else if (s->type == 1)
+		{
+			fprintf(f, "%s[%d, %d, %d, %d, %d]", firstSym ? "" : ", ", s->sym, s->var, (int) s->xrStart - 1, s->xrLen, s->weight);
+			firstSym = false;
+		}
+	}
+	fputs("]]}\n", f);
 	fflush(f);
 }

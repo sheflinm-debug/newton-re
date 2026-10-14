@@ -17,7 +17,12 @@ Outputs:  -o <table>.bin (the DTEMain binary, dte.py's encoding) and beside
           lengths).  Progress on stderr.
 Usage:    python tools/arabic-ink/build_dte.py build/arabic-ink/xrs/set_1
               build/arabic-ink/xrs/set_2 -o build/arabic-ink/arabic-dte.bin
-              [--iterations 3] [--variants 3] [--limit N]
+              [--iterations 3] [--variants 3] [--limit N] [--from-reader]
+          --from-reader starts from the reader's own layouts of the words
+          (a harvest.py --forced harvest, where each word was read with
+          itself as the vocabulary): the reader's segmentation of the
+          word, with its dots where it put them, in place of the rough
+          layout by x.
 
 How it works.  Each sample is a word and the string of xrs the reader cut
 it into (mirrored: the string runs in reading order).  The word's letters
@@ -79,9 +84,9 @@ def log(msg):
 # ---------------------------------------------------------------- samples
 
 class Sample:
-    __slots__ = ("id", "word", "letters", "xrs", "cx", "pen", "assign")
+    __slots__ = ("id", "word", "letters", "xrs", "cx", "pen", "assign", "reader")
 
-    def __init__(self, sid, word, letters, xrs):
+    def __init__(self, sid, word, letters, xrs, reader=None):
         self.id = sid
         self.word = word
         self.letters = letters              # [(letter, form)]
@@ -89,6 +94,26 @@ class Sample:
         self.cx = [(x[X.LEFT] + x[X.RIGHT]) / 2.0 for x in xrs]
         self.pen = np.array([x[X.PENALTY] for x in xrs], dtype=np.int64)
         self.assign = None                  # per letter: list of (xr index, prototype index) or None
+        self.reader = reader                # the reader's own layout: per letter the xr indexes, or None
+
+
+def reader_layout(word_rec, letters):
+    """The reader's layout of the word (a --forced harvest's graph, its
+    first reading), as the xr indexes of each letter - when that reading
+    is the word itself, letter for letter."""
+    graph = word_rec.get("graph")
+    if not graph or not graph[0]:
+        return None
+    reading = graph[0]
+    codes = [arabic.TO_CODE[ch] for ch, form in letters]
+    if [chr(s[0]) for s in reading] != codes:
+        return None
+    n = len(word_rec["xrs"])
+    out = []
+    for sym in reading:
+        start, count = sym[2], sym[3]
+        out.append([i for i in range(start, start + count) if 0 <= i < n])
+    return out
 
 
 def load_samples(paths, limit):
@@ -100,7 +125,7 @@ def load_samples(paths, limit):
         letters = [lf for lf in arabic.letters(s["word"]) if lf[1] is not None]
         if not letters or len(seq) < len(letters):
             continue
-        out.append(Sample(s["id"], s["word"], letters, seq))
+        out.append(Sample(s["id"], s["word"], letters, seq, reader_layout(s["words"][0], letters)))
     random.Random(7).shuffle(out)
     return out[:limit] if limit else out
 
@@ -362,13 +387,19 @@ def count_models(samples, models, assignments):
             v.prepare()
 
 
-def initial_models(samples, rng, min_samples):
-    """From the layout by x: one variant per letter form, as long as the
-    medoid of its subsequences."""
+def initial_models(samples, rng, min_samples, from_reader=False):
+    """From the layout by x - or the reader's own layout of the word, where
+    a --forced harvest has one (--from-reader) - one variant per letter
+    form, sized for its subsequences."""
     subseqs = collections.defaultdict(list)
     layouts = []
+    used_reader = 0
     for s in samples:
-        per = layout_by_x(s)
+        if from_reader and s.reader is not None:
+            per = s.reader
+            used_reader += 1
+        else:
+            per = layout_by_x(s)
         layouts.append(per)
         for (letter, form), idxs in zip(s.letters, per):
             if idxs:
@@ -397,6 +428,8 @@ def initial_models(samples, rng, min_samples):
             assign.append((0, pairs))
         assignments.append(assign if ok else None)
     count_models(samples, models, assignments)
+    if from_reader:
+        log("%d of %d samples laid out by the reader itself" % (used_reader, len(samples)))
     return models
 
 
@@ -506,12 +539,13 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--min-samples", type=int, default=20)
     ap.add_argument("--min-cluster", type=int, default=30)
+    ap.add_argument("--from-reader", action="store_true", help="start from the reader's own layouts (a --forced harvest)")
     args = ap.parse_args()
     rng = random.Random(11)
 
     samples = load_samples(args.harvests, args.limit)
     log("%d samples" % len(samples))
-    models = initial_models(samples, rng, args.min_samples)
+    models = initial_models(samples, rng, args.min_samples, args.from_reader)
     log("%d letter forms modelled" % len(models))
     for it in range(args.iterations):
         assignments, aligned, total = realign(samples, models)

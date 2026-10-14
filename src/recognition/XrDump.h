@@ -35,5 +35,9 @@ bool	XrDumping(void);
 void	XrDumpMark(const char* tag);
 // a word's xrs
 void	XrDumpWord(const xrdata_type* xr, long nPoints);
+// the word graph the reader made of them: each reading's symbols as
+// [code, variant, first xr (from nought), how many xrs, weight] -
+// {"graph": [[[...], ...], ...]} - the reader's own layout of the word
+void	XrDumpGraph(const struct RWG_type* rwg);
 
 #endif

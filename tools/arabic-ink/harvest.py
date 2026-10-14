@@ -15,7 +15,12 @@ Outputs:  in the output directory (default build/arabic-ink/xrs/<name>/):
           .xrs already ends in its last sample's words is not run again, so
           an interrupted harvest picks up where it stopped.
 Usage:    python tools/arabic-ink/harvest.py SAMPLES_DIR [--name NAME]
-              [--batch 50] [--no-mirror] [--jobs 4]
+              [--batch 50] [--no-mirror] [--jobs 4] [--forced]
+          --forced reads each sample with a vocabulary of its own word
+          (to_ns.py --dictionary-each) and the free letters taken away
+          (NEWTON_XR_VOCAB_ONLY=1), so the records hold the reader's own
+          layout of the right word (its graph) beside the xrs.  It wants
+          NEWTON_DTE_MAIN set to the table to lay the words out with.
           e.g. python tools/arabic-ink/harvest.py build/arabic-ink/adab/set_1
 """
 
@@ -54,10 +59,14 @@ def run_batch(args, k, start):
            "--start", str(start), "--count", str(args.batch)]
     if not args.no_mirror:
         cmd.append("--mirror")
+    if args.forced:
+        cmd.append("--dictionary-each")
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
     if os.path.exists(xrs):
         os.remove(xrs)
     env = dict(os.environ, NEWTON_XR_DUMP=xrs)
+    if args.forced:
+        env["NEWTON_XR_VOCAB_ONLY"] = "1"     # (recognition/Xrlv.cpp: only the vocabulary's words may be read)
     env.pop("NEWTON_TRACE_CURSIVE", None)
     # about a tenth of a second a sample, and the boot
     timeout = 60 + args.batch * 2
@@ -75,6 +84,7 @@ def main():
     ap.add_argument("--batch", type=int, default=50, help="samples a run (500 ran the Newton out of memory loading the script)")
     ap.add_argument("--jobs", type=int, default=4, help="batches run at once")
     ap.add_argument("--no-mirror", action="store_true")
+    ap.add_argument("--forced", action="store_true", help="each sample read with its own word as the vocabulary")
     args = ap.parse_args()
     name = args.name or os.path.basename(os.path.normpath(args.samples))
     args.out = args.out or os.path.join(REPO, "build", "arabic-ink", "xrs", name)

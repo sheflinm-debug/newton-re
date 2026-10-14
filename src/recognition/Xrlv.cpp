@@ -14,6 +14,10 @@
 #include "Dictionaries.h"
 #include "ParaGraph.h"			// HostDTEMain
 #include <stdlib.h>				// (NEWTON_CHARSET_PEN)
+#include <stdio.h>
+#include <string.h>
+
+static long	gXrlvKindCount[256];	// (host trace) symbols offered, by the reading's kind
 
 #include <string.h>
 
@@ -62,6 +66,27 @@ xrlv(xrdata_type* xr, RWG_type* rwg, rc_type* rc)
 		d->beam = beam >> 2;
 		d->flags = RCSigned(rc, 0x08);
 		d->charsets = RCSigned(rc, 0x02);
+		// DEVIATION: NEWTON_XR_VOCAB_ONLY=1 (with the host's letter table) takes
+		// the free letters away, so that only the vocabularies' words can be
+		// read: a sample replayed with its own word as the vocabulary is then
+		// read as that word, and its graph is the reader's layout of it -
+		// the alignment tools/arabic-ink/build_dte.py --from-reader trains on
+		// (a mask: 1 no character sets at all, 2 no lexical database, 4 no
+		// vocabularies but the configuration's own)
+		{
+			static int sVocabOnly = -1;
+			if (sVocabOnly < 0)
+			{
+				const char* value = HostDTEMain() != nil ? getenv("NEWTON_XR_VOCAB_ONLY") : nil;
+				sVocabOnly = value != nil ? atoi(value) : 0;
+			}
+			if (sVocabOnly & 1)
+				d->charsets = 0;
+			if (sVocabOnly & 2)
+				rc->fChain = nil;
+			if (sVocabOnly & 4)
+				d->flags &= ~8;
+		}
 		d->caps = RCSigned(rc, 0x1e);
 		// DEVIATION: no trigram header at all is no trigram table (the ROM
 		// reads its word at 0x90 wherever nought points)
@@ -116,6 +141,18 @@ xrlv(xrdata_type* xr, RWG_type* rwg, rc_type* rc)
 			}
 		}
 		XrlvFreeSomePos(d);
+		if (TracingCursive())
+		{
+			// which kinds of reading offered the symbols (the vocabularies 1,
+			// the lexical database 2, the character set 8 and 0xc, leading
+			// punctuation 0x10, ending punctuation 0x11 and up)
+			fprintf(stderr, "[cursive] xrlv symbols by kind:");
+			for (long k = 0; k < 256; k++)
+				if (gXrlvKindCount[k] != 0)
+					fprintf(stderr, " %#lx:%ld", k, gXrlvKindCount[k]);
+			fprintf(stderr, "\n");
+		}
+		memset(gXrlvKindCount, 0, sizeof(gXrlvKindCount));
 		// DEVIATION: the ROM calls the routine whose address is the word at
 		// rc +0x104 when there is one (a hook to abandon the answers); the
 		// host's block has no code addresses in it, and nothing sets one
@@ -563,6 +600,11 @@ XrlvGetCharset(xrlv_data_type* d)
 	{
 		if ((sets & others[s].bit) == 0)
 			continue;
+		// DEVIATION: with the host's letter table in use the alphabet is the
+		// table's alone - the ROM's number, punctuation and other sets are
+		// Latin's, and their characters are the table's letters' codes
+		if (HostDTEMain() != nil)
+			break;
 		const UByte* c = (const UByte*) others[s].chars;
 		for (; *c != 0 && n < 0xff; c++)
 		{
@@ -877,6 +919,7 @@ XrlvDevelopCell(long loc, long capFirst, long extra, xrlv_var_data_type* v, xrlv
 			break;
 	}
 	long n = XrlvGetNextSymbols(v, capFirst, d);
+	gXrlvKindCount[v->kind] += n;		// (host trace: where the symbols came from)
 	for (long s = 0; s < n; s++)
 	{
 		fw_buf_type* fw = &d->syms[s];

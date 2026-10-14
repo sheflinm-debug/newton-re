@@ -120,6 +120,7 @@ arabicSamples := [
 ];
 
 %(dictionary)s
+arabicEach := %(each)s;
 arabicReadings := func(ci)
   begin
     local out := [];
@@ -142,7 +143,16 @@ call walkSetup with (name, func() begin
       begin
         Print("arabic: sample" && n && s.id);
         HostXrDumpMark(s.id);
-        local ci := Recognize([MakeStrokeBundle(s.strokes, 2)], arabicConfig, nil);
+        local config := arabicConfig;
+        local own := nil;
+        if arabicEach then
+          begin
+            own := NewDictionary(true);
+            foreach w in s.words do AddWordToDictionary(own, w);
+            config := {_proto: HostRerecognizeConfig(), dictionaries: [own]};
+          end;
+        local ci := Recognize([MakeStrokeBundle(s.strokes, 2)], config, nil);
+        if own then DisposeDictionary(own);
         local readings := call arabicReadings with (ci);
         if Length(readings) = 0 then
           Print("arabic:" && n && s.id && "nothing")
@@ -171,6 +181,7 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="skip this many samples (in file order)")
     ap.add_argument("--count", type=int, default=0, help="at most this many samples (0: all)")
     ap.add_argument("--dictionary", help="a samples directory, or a text file of words, as the reader's vocabulary")
+    ap.add_argument("--dictionary-each", action="store_true", help="each sample read with a vocabulary of its own word(s) alone")
     args = ap.parse_args()
 
     out = args.out or os.path.join(REPO, "build", "arabic-ink", "replay-mirrored.ns" if args.mirror else "replay.ns")
@@ -194,10 +205,12 @@ def main():
     for sid, d in samples:
         strokes = convert(d, args.band, args.mirror, args.max_width)
         body = ",\n      ".join("[" + ", ".join(str(n) for n in s) + "]" for s in strokes)
-        lines.append("  {id: \"%s\", strokes: [\n      %s]}" % (sid, body))
+        words = ", ".join('"' + w.replace("\\", "\\\\").replace('"', '\\"') + '"' for w in arabic.encode(d["word"]).split())
+        lines.append("  {id: \"%s\", words: [%s], strokes: [\n      %s]}" % (sid, words, body))
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write(SCRIPT_HEAD % {"mirrored": " (mirrored)" if args.mirror else "", "dictionary": dictionary,
+                               "each": "true" if args.dictionary_each else "nil",
                                "common": common.replace("\\", "/"),
                                "samples": ",\n".join(lines)})
     with open(os.path.splitext(out)[0] + ".tsv", "w", encoding="utf-8", newline="\n") as f:

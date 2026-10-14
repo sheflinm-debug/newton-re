@@ -20,6 +20,7 @@
 #include "Airus.h"
 #include "Dictionaries.h"
 #include "XrDomains.h"
+#include "ParaGraph.h"			// HostDTEMain
 
 #include <string.h>
 
@@ -129,6 +130,11 @@ GetWordAttributeAndID(lex_data_type* lex, long* id, long* attr)
 			if (h == nil)
 				goto none;
 			pb = *(AirusAParmBlock**) h;
+			// DEVIATION: with the host's letter table in use the ROM's own
+			// dictionaries (ids below 200) are passed over: their words are
+			// English spelt in codes that are now the table's letters
+			if (HostDTEMain() != nil && pb->fDictID < 200)
+				continue;
 			if (vocabulary)
 			{
 				if (kind == 1)
@@ -243,6 +249,8 @@ GF_VocOrLexSymbolSet(lex_data_type* lex, fw_buf_type* buf, long lexical, TDictCh
 		if (h == nil)
 			break;
 		AirusAParmBlock* pb = *(AirusAParmBlock**) h;
+		if (HostDTEMain() != nil && pb->fDictID < 200)		// (DEVIATION, as above)
+			continue;
 		if (lexical == 0)
 		{
 			if (kind == 1)

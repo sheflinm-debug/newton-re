@@ -9,7 +9,10 @@ Inputs:   one or more harvest directories (harvest.py's output: batch-NNN.tsv
 Outputs:  `summary`: samples, words read per sample, xrs per sample, and
           how often each xr type, height, shift, orientation and link
           occurs.  As a library: `load(paths)` -> a list of
-          {"id", "word", "words": [{"points", "xrs": [Xr, ...]}]}.
+          {"id", "word", "words": [{"points", "xrs": [Xr, ...], "graph"?}]}
+          (a "graph", from a --forced harvest, is the reader's readings of
+          the word: each a list of [code, variant, first xr, how many,
+          weight]).
 Usage:    python tools/arabic-ink/xrs.py summary build/arabic-ink/xrs/set_1 [...]
 
 Each xr is [type, attrib, penalty, height, shift, orient, link, begpoint,
@@ -57,6 +60,9 @@ def load(paths):
                 if "mark" in rec:
                     current = {"id": rec["mark"], "word": words.get(rec["mark"]), "words": []}
                     samples.append(current)
+                elif "graph" in rec:
+                    if current is not None and current["words"]:
+                        current["words"][-1]["graph"] = rec["graph"]
                 elif current is not None:
                     current["words"].append(rec)
     return samples

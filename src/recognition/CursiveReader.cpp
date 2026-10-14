@@ -196,6 +196,8 @@ GCTryToRecognize(PS_point_type* trace, GCWordDescrType* word, rc_type* rc, GCGro
 							err = -9;
 							goto done;
 						}
+						if (XrDumping())
+							XrDumpGraph(&rwg);
 						if (TracingCursive())
 						{
 							fprintf(stderr, "[cursive] xrw_algs: graph of %ld symbols:", rwg.size);
