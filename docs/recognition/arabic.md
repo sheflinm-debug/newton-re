@@ -227,6 +227,19 @@ samples alone); held out 37 read, 0 right, 20%; the user's 42: 22 read,
 3 right, 12%.  A plateau: the models' discrimination, not their
 alignment, is the limit.
 
+Where the loss is: the right word is almost never in the reader's graph
+of alternatives (3 of 48 trained words), so it is lost in the search,
+not demoted after it.  Yet a wider beam (`NEWTON_XR_BEAM`, four times)
+and more readings a location (`NEWTON_XR_ENTRIES`, 100) change nothing,
+and nor does a dearer free letter (`NEWTON_CHARSET_PEN` 12 or 20) now
+that the lexicons are out.  **Closed-vocabulary reading**
+(`NEWTON_XR_VOCAB_ONLY=1` as the normal mode, only the dictionary's words
+allowed) is the best so far: held out, 6 of 50 right (7 among the first
+five) with the 952 place names; the user's 42, 6 right (9 among the
+first five) with their 40 words - but half the words find no path at
+all, which with no free letters to blame means the right letters' own
+matches net nothing: the models.
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware

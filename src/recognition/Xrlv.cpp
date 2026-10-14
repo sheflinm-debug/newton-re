@@ -64,6 +64,19 @@ xrlv(xrdata_type* xr, RWG_type* rwg, rc_type* rc)
 		if (beam < 0)
 			beam += 3;
 		d->beam = beam >> 2;
+		// DEVIATION: NEWTON_XR_BEAM=<n> (with the host's letter table) widens
+		// the beam n times - what a reading may fall below the best and
+		// live - and NEWTON_XR_ENTRIES=<n> (below) the readings a location
+		// keeps: the Latin settings prune an Arabic word's path early
+		{
+			static int sBeamTimes = -1;
+			if (sBeamTimes < 0)
+			{
+				const char* value = HostDTEMain() != nil ? getenv("NEWTON_XR_BEAM") : nil;
+				sBeamTimes = value != nil && atoi(value) > 0 ? atoi(value) : 1;
+			}
+			d->beam *= sBeamTimes;
+		}
 		d->flags = RCSigned(rc, 0x08);
 		d->charsets = RCSigned(rc, 0x02);
 		// DEVIATION: NEWTON_XR_VOCAB_ONLY=1 (with the host's letter table) takes
@@ -704,6 +717,16 @@ XrlvAlloc(xrlv_data_type** pd, xrdata_type* xr, rc_type* rc)
 					long q = RCSigned(rc, 0x10);
 					if (99 < q)
 						q = 100;
+					{
+						static int sEntries = -1;		// (NEWTON_XR_ENTRIES, above)
+						if (sEntries < 0)
+						{
+							const char* value = HostDTEMain() != nil ? getenv("NEWTON_XR_ENTRIES") : nil;
+							sEntries = value != nil && atoi(value) > 1 ? atoi(value) : 0;
+						}
+						if (sEntries > 0)
+							q = sEntries < 200 ? sEntries : 200;
+					}
 					long pct = 100;
 					d->nEntries = q;
 					for (long tries = 0; tries < 5; tries++)
