@@ -138,3 +138,15 @@ add_test(NAME recognition.Ortho COMMAND test_Ortho)
 add_executable(test_Unistroke test_Unistroke.cpp)
 target_link_libraries(test_Unistroke PRIVATE recognition)
 add_test(NAME recognition.Unistroke COMMAND test_Unistroke)
+
+# the host's Arabic network held to the Python model it came from: wants a
+# trained network and its check sample (tools/arabic-ink/export_weights.py);
+# registered when NEWTON_ARABIC_NET names one that exists
+set(NEWTON_ARABIC_NET "${CMAKE_SOURCE_DIR}/../build/arabic-ink/arabic-net" CACHE STRING "an Arabic network's path without its .anet, for recognition.ArabicNet")
+add_executable(test_ArabicNet test_ArabicNet.cpp)
+target_link_libraries(test_ArabicNet PRIVATE recognition)
+if(EXISTS "${NEWTON_ARABIC_NET}.anet" AND EXISTS "${NEWTON_ARABIC_NET}.sample.bin")
+    add_test(NAME recognition.ArabicNet COMMAND test_ArabicNet "${NEWTON_ARABIC_NET}.anet" "${NEWTON_ARABIC_NET}.sample.bin")
+else()
+    message(STATUS "no Arabic network at ${NEWTON_ARABIC_NET}.anet: recognition.ArabicNet is not registered")
+endif()
