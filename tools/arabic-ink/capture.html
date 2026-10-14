@@ -84,7 +84,7 @@ summary { cursor: pointer; font-weight: 500; }
   <div class="sets" role="group" aria-label="Sample set">
     <button class="chip" id="set-words" data-set="words" aria-pressed="true">Words</button>
     <button class="chip" id="set-letters" data-set="letters" aria-pressed="false">Letters</button>
-    <button class="chip" id="set-vowelled" data-set="vowelled" aria-pressed="false">Vowelled</button>
+    <button class="chip" id="set-vowelled" data-set="vowelled" aria-pressed="false">Tanwin</button>
     <button class="chip" id="set-free" data-set="free" aria-pressed="false">Free</button>
   </div>
 
@@ -128,11 +128,11 @@ summary { cursor: pointer; font-weight: 500; }
   var SETS = {
     words: ["باب","بيت","كتاب","قلم","شمس","قمر","ولد","بنت","دار","نور","سلام","مدرسة","عربي","كلمة","يد","زرع","ذهب","طالب","ظل","عين","غرفة","فيل","حب","خبز","جمل","صبر","ضوء","ثلج","هذا","لا","ماء","سمك","نهر","جبل","وردة","شجرة","طائرة","مفتاح","ثعلب","حصان"],
     letters: ["ا","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش","ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","ه","و","ي","ء","ة","ى","لا"],
-    // Fully vowelled words: every short vowel, sukun, shadda and the three
-    // tanwin, each several times, and the hamza seats.  Write the marks as
-    // you would by hand, after the word or as you go.  (ADAB's writers
-    // wrote none of these, so the recogniser learns them from you alone.)
-    vowelled: ["كِتَابٌ","مَدْرَسَةٌ","بَيْتٍ","قَلَمًا","شَمْسٌ","مُعَلِّمٌ","سَلاَمٌ","عَرَبِيٌّ","كَلِمَةً","يَدٌ","ذَهَبَ","طَالِبٌ","عَيْنٍ","غُرْفَةٌ","حُبٌّ","خُبْزًا","جَمَلٌ","صَبْرٌ","ضَوْءٌ","ثَلْجٌ","مَاءً","سَمَكٌ","نَهْرٍ","جَبَلٌ","وَرْدَةٌ","شَجَرَةٌ","مِفْتَاحٌ","أَحْمَدُ","إِبْرَاهِيمُ","مُؤْمِنٌ","سُؤَالٌ","شَيْءٌ","قُرْآنٌ","مَسْؤُولٌ","رَئِيسٌ"],
+    // The marks that are actually written: tanwin al-fath on alif (the
+    // one mark everyday writing keeps), and a few shadda words.  Vowels
+    // are otherwise left unwritten, as they are by hand.  (ADAB's writers
+    // wrote no tanwin, so the recogniser learns it from you alone.)
+    vowelled: ["شكرًا","كتابًا","قلمًا","خبزًا","جدًا","أبدًا","أيضًا","أهلًا","عفوًا","مرحبًا","طبعًا","دائمًا","مثلًا","قريبًا","فعلًا","مُعلّم","محمّد","شدّة","حقّ","أمّ"],
     free: []
   };
 
