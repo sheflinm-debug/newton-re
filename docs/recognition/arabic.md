@@ -257,10 +257,16 @@ of the height), on ADAB's samples, and exports it to ONNX.
 set 3, other writers: letters wrong 27.1%; words right 7.3% read freely,
 **89.3% with the 952 place names as the vocabulary** (a CTC score per
 word, over the 40 nearest the free reading).  ParaGraph's table, with
-the same vocabulary, read 12%.  The full run (10,126 words, 20 epochs)
-is next, then the engine: the model run in host code on each word the
-ink grouping makes, the reading posted as the Newton's own recognisers
-post theirs, an "Arabic" button in the Handwriting Recognition slip.
+the same vocabulary, read 12%.
+
+The full run (10,126 words, 20 epochs, about 8 minutes an epoch, the
+vocabulary scored every fifth): letters wrong 7.9%, words right 54.0%
+read freely, **98.3% with the vocabulary** (99.0% at epoch 15).  On the
+user's 42 words - another hand, another device, their 40 words as the
+vocabulary - letters wrong 41%, words right 21% freely, 81% with the
+vocabulary (the 3,000-word model: 54%, 7%, 71%).  The gap between
+ADAB's writers and the user's hand is what a few dozen of the user's
+own words in the training set are for.
 
 ## The engine (2026-10-14)
 
