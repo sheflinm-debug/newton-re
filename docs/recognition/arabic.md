@@ -295,6 +295,24 @@ ROM's fonts (the text is right in the note; the screen cannot yet draw
 it); the marks and the letters the training had no samples of; a way to
 choose the network from the Host panel rather than the environment.
 
+## The screen (2026-10-14)
+
+The ROM's fonts have no Arabic, and its text engine measures and draws
+one character at a time, left to right (`Text.cpp`'s
+`MeasureGlyphWidths`, `DrText.cpp`'s `DrTextChunk`).  `qd/ArabicText.h`
+(a DEVIATION) stands in front of both: the letters joined into their
+contextual forms (Unicode's Presentation Forms-B, by the joining rules),
+each run of Arabic reversed for drawing with its advances - a letter and
+its marks moving as one - and the glyphs taken from a host face with
+Arabic in it (Arial, Segoe UI or Tahoma on Windows), opened at the
+strike's size and kept, since the ROM's strikes have none.  ctest
+`qd.ArabicText` holds the joining and the reordering; the demo's "باب"
+now shows as باب on the Notepad.  Not a bidirectional layout: the caret
+and the selection still count in logical order (mirrored inside an
+Arabic word), and a line of mixed scripts is runs, not Unicode's
+algorithm.  NOT YET: the lam-alif ligature, the caret in visual order,
+Arabic in the ROM's own bitmap fonts (the hosts without a rasteriser).
+
 ## Next
 
 1. Better models: the dots bound to their letters (a position-aware

@@ -28,7 +28,9 @@
 #include "NewtonExceptions.h"
 #include "NewtonMemory.h"
 #include "host/RomBugs.h"
+#include "ArabicText.h"
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 // the ROM's characters
@@ -55,6 +57,15 @@ MeasureGlyphWidths(const UniChar* chars, long length, StyleRecord** styles, cons
 	long done = 0;
 	long run = 0;
 	layout->fSpaces = 0;
+	// DEVIATION: Arabic measured in its contextual forms, from a face that
+	// has them (qd/ArabicText.h); the width is the same in any order
+	UniChar* shaped = nil;
+	if (ArabicInText(chars, length))
+	{
+		shaped = (UniChar*) malloc(length * sizeof(UniChar));
+		if (shaped != nil)
+			ArabicShape(chars, length, shaped);
+	}
 	while (done < length)
 	{
 		long count = (runLengths != nil) ? runLengths[run] : length;
@@ -71,8 +82,10 @@ MeasureGlyphWidths(const UniChar* chars, long length, StyleRecord** styles, cons
 			Fixed advance = 0;
 			if (opened)
 			{
-				info.fGetGlyphInfo(chars[index], 0, &info);
-				advance = info.fGlyphAdvance;
+				UniChar ch = shaped != nil ? shaped[index] : chars[index];
+				FontEngineInfo* use = ArabicGlyphSource(&info, ch);
+				use->fGetGlyphInfo(ch, 0, use);
+				advance = use->fGlyphAdvance;
 			}
 			layout->fAdvances[index] = advance;
 			// the width to fit is measured at the size drawn: a strike
@@ -92,6 +105,7 @@ MeasureGlyphWidths(const UniChar* chars, long length, StyleRecord** styles, cons
 		done += count;
 		run++;
 	}
+	free(shaped);
 	if (options != nil)
 		options->fFittedWidth = width;
 	layout->fCount = length;

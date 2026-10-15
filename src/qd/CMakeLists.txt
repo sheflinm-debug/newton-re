@@ -21,6 +21,7 @@ add_library(qd STATIC
     HostFontEngine.cpp
     Text.cpp
     DrText.cpp
+    ArabicText.cpp
     Pictures.cpp
     MungeBitmap.cpp
     Tile.cpp

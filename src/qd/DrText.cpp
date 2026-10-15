@@ -45,6 +45,7 @@
 #include "ByteOrder.h"
 #include "Frames.h"
 #include "host/RomBugs.h"
+#include "ArabicText.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -389,16 +390,41 @@ DrTextChunk(DrTextInfo* dti, long count, const UniChar* chars, const Fixed* adva
 		bits = block + 4;
 	}
 
+	// DEVIATION: Arabic drawn in its contextual forms, each run right to
+	// left, its glyphs from a face that has them (qd/ArabicText.h)
+	UniChar* vchars = nil;
+	Fixed* vadv = nil;
+	if (ArabicInText(chars, count))
+	{
+		vchars = (UniChar*) malloc(count * sizeof(UniChar));
+		vadv = (Fixed*) malloc(count * sizeof(Fixed));
+		if (vchars != nil && vadv != nil)
+		{
+			ArabicShape(chars, count, vchars);
+			memcpy(vadv, advances, count * sizeof(Fixed));
+			ArabicReorder(vchars, vadv, count);
+		}
+		else
+		{
+			free(vchars); free(vadv);
+			vchars = nil; vadv = nil;
+		}
+	}
+	const UniChar* dchars = vchars != nil ? vchars : chars;
+	const Fixed* dadv = vadv != nil ? vadv : advances;
+
 	// the glyphs ORed in, each at the pen (rounded) and its bearing
 	Fixed pen = (Fixed) (((ULong32) (x0 - origin) << 16) | 0x8000);
 	long clipLeft = clip.left - origin;
 	long clipRight = clip.right - origin;
 	for (long i = 0; i < count; i++)
 	{
-		info.fGetGlyph(chars[i], 0, &info);
+		FontEngineInfo* use = ArabicGlyphSource(&info, dchars[i]);
+		use->fGetGlyph(dchars[i], 0, use);
+		ArabicCopyGlyph(&info, use);
 		long gx = info.fGlyphBearingX + (pen >> 16);
 		long gxEnd = info.fGlyphWidth + gx;
-		pen += advances[i];
+		pen += dadv[i];
 		long skip = 0;
 		if (direct)
 		{
@@ -460,6 +486,8 @@ DrTextChunk(DrTextInfo* dti, long count, const UniChar* chars, const Fixed* adva
 			}
 		}
 	}
+	free(vchars);
+	free(vadv);
 	if (direct)
 	{
 		QDStopDrawing(&portBits, &drawn);

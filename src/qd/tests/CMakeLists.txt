@@ -74,3 +74,7 @@ target_link_libraries(test_HostFonts PRIVATE qd)
 target_compile_definitions(test_HostFonts PRIVATE "NEWTON_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
 add_test(NAME qd.HostFonts COMMAND test_HostFonts)
 set_tests_properties(qd.HostFonts PROPERTIES TIMEOUT 120)
+
+add_executable(test_ArabicText test_ArabicText.cpp)
+target_link_libraries(test_ArabicText PRIVATE qd)
+add_test(NAME qd.ArabicText COMMAND test_ArabicText)
