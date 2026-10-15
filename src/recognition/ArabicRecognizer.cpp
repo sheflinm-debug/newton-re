@@ -18,6 +18,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 PROTOCOL_IMPL_SOURCE_MACRO(TArabicRecognizer)
 PROTOCOL_CLASSINFO(TArabicRecognizer, kHostWordEngineInterface, "", 0, 0, nil)
@@ -26,6 +27,47 @@ PROTOCOL_CLASSINFO(TArabicRecognizer, kHostWordEngineInterface, "", 0, 0, nil)
 const ULong kArabicWordLabel = 0;
 // a reading less sure than this is left as ink (0..100)
 const long kArabicGoodConfidence = 20;
+
+
+#if defined(_WIN32)
+extern "C" __declspec(dllimport) unsigned long __stdcall GetModuleFileNameA(void* module, char* name, unsigned long size);
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#else
+#include <unistd.h>
+#endif
+
+// The directory the running program is in, with its separator; false
+// when it cannot be told.  (As host/HostObjectsFile.cpp finds it; this
+// library sits below the host's, so it asks for itself.)
+static bool
+ProgramDirectory(char* dir, size_t size)
+{
+	dir[0] = 0;
+#if defined(_WIN32)
+	unsigned long n = GetModuleFileNameA(NULL, dir, (unsigned long) size);
+	if (n == 0 || n >= size)
+		dir[0] = 0;
+#elif defined(__APPLE__)
+	uint32_t n = (uint32_t) size;
+	if (_NSGetExecutablePath(dir, &n) != 0)
+		dir[0] = 0;
+#else
+	ssize_t n = readlink("/proc/self/exe", dir, size - 1);
+	dir[n > 0 ? n : 0] = 0;
+#endif
+	char* slash = NULL;
+	for (char* p = dir; *p; p++)
+		if (*p == '/' || *p == '\\')
+			slash = p;
+	if (slash == NULL)
+	{
+		dir[0] = 0;
+		return false;
+	}
+	slash[1] = 0;
+	return true;
+}
 
 
 static Boolean
@@ -41,8 +83,10 @@ Tracing(void)
 }
 
 
-// The network, read once from the file NEWTON_ARABIC_NET names; nil when
-// there is none (said once).
+// The network, read once: the file NEWTON_ARABIC_NET names, else
+// arabic-net.anet beside the program, else build/arabic-ink/arabic-net.anet
+// under the working directory (where tools/arabic-ink/export_weights.py
+// writes it); nil when there is none (said once).
 static ArabicNet*
 Network(void)
 {
@@ -55,7 +99,33 @@ Network(void)
 		if (path != nil && *path != 0)
 			sNet = ArabicNetLoad(path);
 		else
-			fprintf(stderr, "[arabic] no network: NEWTON_ARABIC_NET names none (the engine reads nothing)\n");
+		{
+			const char* tries[] = { "arabic-net.anet", "build/arabic-ink/arabic-net.anet", "../build/arabic-ink/arabic-net.anet" };
+			char beside[1024];
+			if (ProgramDirectory(beside, sizeof(beside)) && strlen(beside) + 20 < sizeof(beside))
+			{
+				strcat(beside, "arabic-net.anet");
+				FILE* f = fopen(beside, "rb");
+				if (f != nil)
+				{
+					fclose(f);
+					sNet = ArabicNetLoad(beside);
+				}
+			}
+			for (unsigned i = 0; sNet == nil && i < sizeof(tries) / sizeof(tries[0]); i++)
+			{
+				FILE* f = fopen(tries[i], "rb");
+				if (f != nil)
+				{
+					fclose(f);
+					sNet = ArabicNetLoad(tries[i]);
+				}
+			}
+			if (sNet == nil)
+				fprintf(stderr, "[arabic] no network: NEWTON_ARABIC_NET names none and no arabic-net.anet is beside the program or under build/arabic-ink (the engine reads nothing, so writing stays ink)\n");
+		}
+		if (sNet != nil)
+			fprintf(stderr, "[arabic] the network is loaded\n");
 	}
 	return sNet;
 }
