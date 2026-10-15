@@ -758,6 +758,45 @@ TParagraphView::FindLineContainingCharOffset(long offset)
 }
 
 
+// DEVIATION: a line whose first letter is Arabic is drawn right to left
+// (qd/ArabicText.h, the paragraph flush right), the mirror image of the
+// left-to-right layout the line's geometry describes; a box or a point on
+// such a line is mirrored about the line's text box both ways, so that the
+// caret, the selection and a tap fall where the page shows the characters
+// (docs/recognition/arabic.md, "The screen").
+static Boolean
+LineIsRTL(TParagraphView* view, const LineInfo* line)
+{
+	if (line == nil || line->fEnd <= line->fStart)
+		return false;
+	RefVar textRef(view->Text());
+	LockRef(textRef);
+	const UniChar* text = GetCString(textRef);
+	Boolean rtl = false;
+	for (long i = line->fStart; i < line->fEnd && text[i] != 0; i++)
+	{
+		UniChar ch = text[i];
+		if (ch == ' ' || ch == 0x09 || ch == kCR)
+			continue;
+		rtl = IsArabicChar(ch);
+		break;
+	}
+	UnlockRef(textRef);
+	return rtl;
+}
+
+
+static void
+MirrorInLine(const LineInfo* line, Rect* box)
+{
+	long axis = line->fBounds.left + line->fBounds.right;
+	short left = (short) (axis - box->right);
+	short right = (short) (axis - box->left);
+	box->left = left;
+	box->right = right;
+}
+
+
 // ROM 0x00177f20 OffsetToBounds__14TParagraphViewFlP5TRect
 // The box of the character at the offset (kept inside the text): the
 // line it is on and the text object or tab it is in (OffsetInRunToBounds).
@@ -781,6 +820,8 @@ TParagraphView::OffsetToBounds(long offset, Rect* bounds)
 		long kind;
 		TextObjectRef* run = FindTextRunContainingCharOffset(line, offset, &kind);
 		OffsetInRunToBounds(offset, line, run != nil ? *run : 0, kind, bounds);
+		if (LineIsRTL(this, line))		// (DEVIATION, above)
+			MirrorInLine(line, bounds);
 		return;
 	}
 	bounds->top = viewBounds.top;
@@ -879,6 +920,10 @@ TParagraphView::OffsetToCaret(long offset, Rect* caret)
 	{
 		OffsetToBounds(offset, caret);
 		long index = FindLineContainingCharOffset(offset);
+		// (DEVIATION: on a right-to-left line the caret stands before the
+		// character in reading order, which is at its right edge)
+		if (index >= 0 && LineIsRTL(this, &Line(index)))
+			caret->left = (short) (caret->right + 1);
 		if (index < 0)
 		{
 			StyleRecord style;
@@ -917,10 +962,20 @@ TParagraphView::PointToOffset(const Point& pt, long margin, Boolean onChar, Rect
 	if (index < 0)
 		return -1;
 	const LineInfo* line = &Line(index);
+	// (DEVIATION: a point on a right-to-left line mirrored into the line's
+	// geometry, LineIsRTL above; a character box found is mirrored back)
+	Boolean rtl = LineIsRTL(this, line);
+	Point mirrored = pt;
+	if (rtl)
+	{
+		long axis = line->fBounds.left + line->fBounds.right;
+		at.h = (short) (axis - at.h);
+		mirrored.h = (short) (axis - pt.h);
+	}
 	if (charBox == nil && outLine == nil && outRun == nil && outTab == nil)
 	{
 		if (!PtInRect(pt, &line->fBounds))
-			return PointInMarginsToOffset(pt, line);
+			return PointInMarginsToOffset(mirrored, line);
 	}
 	long tab;
 	TextObjectRef* found = FindTextRunContainingCoordinate(line, at.h, &tab);
@@ -946,6 +1001,8 @@ TParagraphView::PointToOffset(const Point& pt, long margin, Boolean onChar, Rect
 			TabBounds(line, tab, run, tabs, charBox);
 		}
 	}
+	if (rtl && charBox != nil)
+		MirrorInLine(line, charBox);
 	if (outLine != nil)
 		*outLine = index;
 	if (outRun != nil)
@@ -4387,8 +4444,11 @@ TParagraphView::HandleWord(const UniChar* text, ULong length, const Rect& box,
 		{
 			RefVar spec(Clone(RefVar(Rstarterinsertspec)));
 			SetFrameSlot(spec, RSSYMinsertitems, RefVar(unit->WordInfo()));
-			SetFrameSlot(spec, RSSYMaddspace,
-						 RefVar(MAKEBOOLEAN(!IsMidWordLetterInsertion(this, unit))));
+			// (DEVIATION: a right-to-left word always gets its space - the
+			// mid-word test is by the ink's place against the mirrored text -
+			// unless it starts the paragraph)
+			Boolean addSpace = rtl ? fCaretOffset > 0 : !IsMidWordLetterInsertion(this, unit);
+			SetFrameSlot(spec, RSSYMaddspace, RefVar(MAKEBOOLEAN(addSpace)));
 			InsertItemsAtCaret(spec);
 			gAddWordInfo = false;
 			at = RINT(RefVar(GetFrameSlot(spec, RSSYMinsertoffset)));
