@@ -66,8 +66,39 @@ call walkSetup with (name, func() begin
         // (compared as codes: NewtonScript's \u escape is not C's)
         local ok := StrEqual(call arabicCodes with (text), "1576 1575 1576");
         Print("arabic: the page reads " & call arabicCodes with (text) & (if ok then ": ok" else ": FAILED (wanted 1576 1575 1576)"));
-        Print("arabic: done, " & (if ok then "0" else "1") & " failed");
-        HostQuit();
+        // The second word, the same strokes 55 pixels to the left - where
+        // the next word of a line written right to left goes - after the
+        // pause the first word's reading took (more than the second the
+        // ROM keeps a word tied to the one before, less than the ten an
+        // Arabic word keeps it): it must follow the first in the text,
+        // "باب باب", not precede it as a word to the left of Latin would.
+        foreach s in arabicWord do
+          begin
+            local shifted := [];
+            for i := 0 to Length(s) - 2 by 2 do
+              begin
+                AddArraySlot(shifted, s[i] - 55);
+                AddArraySlot(shifted, s[i + 1]);
+              end;
+            // (a dot of two points is a tap to the click recogniser, which
+            // may take it before the word engine sees it: the second
+            // word's dots are given a third point, as a real dot has)
+            if Length(shifted) <= 4 then
+              begin
+                AddArraySlot(shifted, shifted[0] + 1);
+                AddArraySlot(shifted, shifted[1] + 1);
+              end;
+            call arabicStroke with (shifted);
+          end;
+        IdleStrokes();
+        call waitFor with ("arabic: the second word", func() StrLen(call arabicText with (GetRoot())) >= 7, func() begin
+            local text2 := call arabicText with (GetRoot());
+            local ok2 := StrEqual(call arabicCodes with (text2), "1576 1575 1576 32 1576 1575 1576");
+            Print("arabic: the page reads " & call arabicCodes with (text2) & (if ok2 then ": ok" else ": FAILED (wanted 1576 1575 1576 32 1576 1575 1576)"));
+            ScreenSnapshot("build/arabic-two-words.pgm");
+            Print("arabic: done, " & (if ok and ok2 then "0" else "1") & " failed");
+            HostQuit();
+          end, 60);
       end, 60);
   end);
 Print("arabic: the script is loaded");

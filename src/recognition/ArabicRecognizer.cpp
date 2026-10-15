@@ -15,6 +15,7 @@
 #include "Stroke.h"
 #include "Unit.h"
 #include "Protocols.h"
+#include "Ports.h"				// ToFixed
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -161,10 +162,14 @@ TArabicRecognizer::Initialize(void)
 }
 
 
-// A stroke offered: it joins the word being built when the pen came down
-// again soon enough after that word's last stroke (the domain's delay,
-// as the ink-only engine has it); otherwise that word is closed and this
-// stroke starts the next.
+// A stroke offered: it joins the word being built when it lies where that
+// word is - within a short gap of the word's box along the line (the
+// dots and marks over and under a word fall within it, the next word
+// starts a word gap away), on or about its line - and the pen came down
+// again within a few seconds; otherwise that word is closed and this
+// stroke starts the next.  (The ink-only engine groups by the clock
+// alone, and under load, or with a slow hand, a word's strokes fell into
+// several units.)
 void
 TArabicRecognizer::Group(TStrokeUnit* stroke)
 {
@@ -172,8 +177,19 @@ TArabicRecognizer::Group(TStrokeUnit* stroke)
 	TWRecUnit* group = (TWRecUnit*) GetPartialGroup(&found);
 	if (found != 0 && group != nil)
 	{
-		ULong gap = GetStartTime(stroke) - GetEndTime(group);
-		if (GetStartTime(stroke) >= GetEndTime(group) && gap <= (ULong) fDomain->fDelay)
+		FRect gb, sb;
+		group->GetBBox(&gb);
+		stroke->GetBBox(&sb);
+		Fixed height = gb.bottom - gb.top;
+		if (height < ToFixed(12))
+			height = ToFixed(12);
+		Fixed gap = height * 3 / 4;				// along the line: three quarters of the word's height
+		Fixed reach = height * 3 / 2;			// above or below: a line and a half (a dot over a tall word)
+		Boolean along = sb.left <= gb.right + gap && sb.right >= gb.left - gap;
+		Boolean about = sb.top <= gb.bottom + reach && sb.bottom >= gb.top - reach;
+		ULong pause = GetStartTime(stroke) - GetEndTime(group);
+		Boolean soon = GetStartTime(stroke) >= GetEndTime(group) && pause <= 4 * 60;		// (ticks: four seconds)
+		if (along && about && soon)
 		{
 			AddSub(group, stroke);
 			return;

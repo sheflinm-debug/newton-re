@@ -137,6 +137,34 @@ def build_model(torch, hidden, classes):
     return Net()
 
 
+def load_from_onnx(torch, model, path, hidden):
+    """The weights of an exported network put back into the model (the
+    exporter's reordering undone: ONNX's gates are z, r, h; PyTorch's r,
+    z, n; ONNX's B is the input biases then the hidden ones)."""
+    import onnx
+    from onnx import numpy_helper
+    m = onnx.load(path)
+    inits = {i.name: torch.tensor(numpy_helper.to_array(i).copy()) for i in m.graph.initializer}
+    matmuls = [n for n in m.graph.node if n.op_type == "MatMul"]
+    grus = [n for n in m.graph.node if n.op_type == "GRU"]
+    H = hidden
+    with torch.no_grad():
+        model.inp.weight.copy_(inits[matmuls[0].input[1]].t())
+        model.inp.bias.copy_(inits["inp.bias"])
+        model.out.weight.copy_(inits[matmuls[1].input[1]].t())
+        model.out.bias.copy_(inits["out.bias"])
+        for layer, gru in enumerate(grus):
+            W, R, B = inits[gru.input[1]], inits[gru.input[2]], inits[gru.input[3]]
+            for d, suffix in ((0, ""), (1, "_reverse")):
+                z, r, h = W[d][:H], W[d][H:2 * H], W[d][2 * H:]
+                getattr(model.gru, "weight_ih_l%d%s" % (layer, suffix)).copy_(torch.cat([r, z, h]))
+                z, r, h = R[d][:H], R[d][H:2 * H], R[d][2 * H:]
+                getattr(model.gru, "weight_hh_l%d%s" % (layer, suffix)).copy_(torch.cat([r, z, h]))
+                wb, rb = B[d][:3 * H], B[d][3 * H:]
+                getattr(model.gru, "bias_ih_l%d%s" % (layer, suffix)).copy_(torch.cat([wb[H:2 * H], wb[:H], wb[2 * H:]]))
+                getattr(model.gru, "bias_hh_l%d%s" % (layer, suffix)).copy_(torch.cat([rb[H:2 * H], rb[:H], rb[2 * H:]]))
+
+
 def greedy(logits, alphabet):
     """CTC greedy decoding of one sequence's logits (T x classes)."""
     best = logits.argmax(dim=-1).tolist()
@@ -228,6 +256,10 @@ def main():
     ap.add_argument("--validate-limit", type=int, default=500)
     ap.add_argument("--vocabulary", help="a samples directory whose words are the vocabulary the validation also decodes over")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--init", help="start from this trained .onnx (its weights put back into the network: fine-tuning)")
+    ap.add_argument("--oversample", nargs=2, metavar=("DIR", "TIMES"), action="append", default=[],
+                    help="a samples directory counted TIMES over in the training set (a writer's own words, say)")
+    ap.add_argument("--lr", type=float, default=2e-3)
     args = ap.parse_args()
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -257,6 +289,10 @@ def main():
     random.shuffle(train)
     if args.limit:
         train = train[:args.limit]
+    for d, times in args.oversample:
+        extra = prepare([d])
+        train += extra * int(times)
+        log("%s: %d samples, counted %s times" % (d, len(extra), times))
     valid = prepare(args.validate)
     random.shuffle(valid)
     vocabulary = None
@@ -266,7 +302,11 @@ def main():
         ", vocabulary of %d words" % len(vocabulary) if vocabulary else ""))
 
     model = build_model(torch, args.hidden, len(alphabet))
-    opt = torch.optim.Adam(model.parameters(), lr=2e-3)
+    if args.init:
+        load_from_onnx(torch, model, args.init, args.hidden)
+        cer, acc, _ = evaluate(torch, model, valid, alphabet, index, None, args.validate_limit)
+        log("from %s: validation letters wrong %.1f%%, words right %.1f%%" % (args.init, 100 * cer, 100 * acc))
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     ctc = torch.nn.CTCLoss(blank=0, zero_infinity=True)
     for epoch in range(1, args.epochs + 1):
         model.train()

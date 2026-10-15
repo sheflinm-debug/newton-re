@@ -17,6 +17,7 @@
 #include "Screen.h"			// screenHeight
 #include "Unicode.h"
 #include "InkShapes.h"		// IsInkWord
+#include "ArabicText.h"		// IsArabicChar
 #include "Ink.h"
 #include "Frames.h"
 #include "ObjectHeap.h"
@@ -634,6 +635,17 @@ LineLoop::LineLoop(TParagraphView* view, TextObjectRef** textObjects, StyleRecor
 	ULong flush = justify & 0x3fffffff;
 	if ((justify & 3) != 0 && Ustrchr(fTextStart, kTabChar) != nil)
 		flush = justify & 0x3ffffffc;
+	// DEVIATION: a paragraph whose first letter is Arabic is laid out flush
+	// right, as its script runs (qd/ArabicText.h; docs/recognition/arabic.md)
+	if ((flush & 3) == vjLeftH)
+		for (const UniChar* p = fTextStart; p < fTextEnd; p++)
+		{
+			if (*p == ' ' || *p == kTabChar || *p == kReturnChar)
+				continue;
+			if (IsArabicChar(*p))
+				flush = (flush & ~3) | vjRightH;
+			break;
+		}
 	InitializeTextOptions(&view->fTextOptions, flush, (short) (fRight - fLeft), (ULong) view->fTransferMode);
 	fOptions = &view->fTextOptions;
 	fLineHeight = 0;

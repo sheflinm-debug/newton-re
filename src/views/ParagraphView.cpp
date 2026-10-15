@@ -8,6 +8,7 @@
 
 #include "ParagraphView.h"
 #include "ParagraphLines.h"
+#include "ArabicText.h"		// IsArabicChar (a word written right to left)
 #include "SoundSettings.h"	// FClicker
 #include "Polygons.h"
 #include "Ink.h"
@@ -4254,10 +4255,15 @@ TParagraphView::HandleWord(const UniChar* text, ULong length, const Rect& box,
 	// text a point is in), when a second has passed since that word's ink
 	// ended, or when this word was written above the paragraph or to the
 	// left of it
+	// DEVIATION: a word of a right-to-left script (Arabic) keeps the tie for
+	// ten seconds rather than one, and a word left of the paragraph is its
+	// continuation, not a stranger (docs/recognition/arabic.md)
+	Boolean rtl = length > 0 && IsArabicChar(text[0]);
+	ULong tieTicks = rtl ? 0x258 : 0x3c;
 	if ((startTime == 0 && endTime == 0)
-		|| (ULong) (startTime - gLastAddedWordInkEndTime) > 0x3c
+		|| (ULong) (startTime - gLastAddedWordInkEndTime) > tieTicks
 		|| (gLastAddedWordView == this
-			&& (box.right < room.left || box.bottom < room.top)))
+			&& ((!rtl && box.right < room.left) || box.bottom < room.top)))
 	{
 		gLastAddedWordView = nil;
 		gLastAddedWordBox.top = -0x8000;
@@ -4298,6 +4304,10 @@ TParagraphView::HandleWord(const UniChar* text, ULong length, const Rect& box,
 	{
 		Boolean adjacent = AdjacentBoxes(gLastAddedWordBox, box,
 										 gLastAddedWordBase, pt, 1000);
+		// (DEVIATION, as above: a right-to-left word on the last word's line,
+		// wherever along it, follows that word)
+		if (!adjacent && rtl && box.top < gLastAddedWordBox.bottom && box.bottom > gLastAddedWordBox.top)
+			adjacent = true;
 		Boolean above = !adjacent && BoxAboveBox(gLastAddedWordBox, box);
 		if (adjacent || above)
 		{
