@@ -50,11 +50,12 @@ EXPECTED = {
 	"preferenceRoll": "Newton Devices (rex/newtdev.pkg) adds an AppleTalk panel to the Prefs list",
 	"prefs-sound": "the Prefs list showing below the Sound panel has Newton Devices' AppleTalk entry",
 	"prefs-sleep": "the Prefs list showing below the Sleep panel has Newton Devices' AppleTalk entry",
-	"prefs-handwriting": "the Prefs list showing below the Handwriting panel is one row longer with Newton Devices' AppleTalk entry: its last row (Network Printers, the host's Host page above it) shows",
 }
 # (the NIE's icons are not in the Extras drawer's Unfiled Icons, so that step
-# is the same in both; the Handwriting Recognition panel covered the list's
-# last rows until the host's Host preferences page made it one row longer)
+# is the same in both; the Handwriting Recognition panel covers the list's
+# last rows - it grew a row per host word engine, two now (unistroke and
+# Arabic), after the host's Host preferences page had made the list one row
+# longer and its last row show below the panel)
 
 
 def boot(newton, args, out, label, timeout):

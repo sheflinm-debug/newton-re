@@ -4374,6 +4374,13 @@ TParagraphView::HandleWord(const UniChar* text, ULong length, const Rect& box,
 		Boolean atCaret = gRootView->fCaretView != nil
 						  && NOTNIL(RefVar(GetPreference(RSSYMremotewriting)))
 						  && (gRootView->fCaretView == this || score == 2);
+		// DEVIATION: a word of a right-to-left script goes in at the caret
+		// when the caret is in this paragraph - after the last word written,
+		// or where the writer tapped - since the paragraph's geometry (left
+		// to right) is the mirror of what the page shows for Arabic
+		// (docs/recognition/arabic.md)
+		if (rtl && gRootView->fCaretView == this)
+			atCaret = true;
 		if (unit == nil || !atCaret || NOTNIL(info))
 			AddWord(&finder, finder.fText, finder.fLength, info, &at);
 		else
