@@ -62,7 +62,7 @@ extern TObjectId		gCurrentMonitorId;			// 0x0c101148  monitor whose task is runn
 extern TDoubleQContainer* gBlockedOnMemory;			// 0x0c101128  tasks parked by a fault monitor (TTask::fMonitorQItem)
 extern ULong			gRebootProtectCount;		// 0x0c10113c  reboot-protected monitor calls in progress
 extern Boolean			gWantReboot;				// 0x0c101140  a safe Reboot is waiting for them to finish
-extern SGlobalsThatLiveAcrossReboot gGlobalsThatLiveAcrossReboot;	// 0x0c103490
+extern SGlobalsThatLiveAcrossReboot gGlobalsThatLiveAcrossReboot;	// 0x0c1061c4 (symbols.txt; the patch code's literal)
 
 // the running task and its accounts (TaskSwitch.*)
 extern TObjectId		gCurrentTaskId;				// 0x0c101144  set by SwapInGlobals

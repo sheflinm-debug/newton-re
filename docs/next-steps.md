@@ -176,7 +176,12 @@ does not do yet:
 
 ## Waiting on the owner
 
-Nothing at present.
+- **An Apple System Update package** (a 2.1 update for the MP2x00, from
+  UNNA), kept under `build/updates/` (not committed): to see how Apple's
+  own patch got onto a ROM whose `'ptch'` part check cannot pass
+  (`docs/packages/system-patches.md`, "The package path") - its own
+  installer code, or a part the ROM takes another way - before the
+  Arabic package's installer is written.
 
 ## Open
 
