@@ -58,6 +58,10 @@ tools/newton-rom/
     romdisasm.py          a range of rom.bin disassembled with capstone, calls and literals named from
                           symbols.txt - no Ghidra (for when the project is locked or not built);
                           build/venv/Scripts/python tools/newton-rom/analysis/romdisasm.py build/MP2x00US START END
+    slotcallers.py        who branches to a function's body and who to its jump-table slot (every `b`/`bl`
+                          in the image, vtable entries included) - a function with no direct callers can be
+                          replaced by a system patch of its slot's page (docs/packages/system-patches.md);
+                          python tools/newton-rom/analysis/slotcallers.py build/MP2x00US NAME... [--max N]
     framewalk.py          a function's stack slots followed along one path as frame offsets (sp counted
                           through every sub/add/push/pop and sp-indexed load and store - capstone shows
                           `ldr rX,[sp],#-4` as `pop`, which it is not); framewalk.py build/MP2x00US START STOP

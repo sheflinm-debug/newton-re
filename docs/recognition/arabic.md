@@ -313,8 +313,21 @@ Arabic word), and a line of mixed scripts is runs, not Unicode's
 algorithm.  NOT YET: the lam-alif ligature, the caret in visual order,
 Arabic in the ROM's own bitmap fonts (the hosts without a rasteriser).
 
+## As a package for a real Newton (2026-10-27)
+
+The support is wanted installable on a stock MessagePad 2x00 (Einstein
+first): the recogniser as a native part registering its domain, the
+shaping, paragraph and caret changes as a system patch of the jump-table
+pages their slots are on - every call to them goes through the slot, so
+the patch catches all.  How the ROM keeps and installs a patch, the
+image's format, why the ROM's own `'ptch'` part path cannot take one as
+shipped, and the route: `docs/packages/system-patches.md`.
+
 ## Next
 
+0. The installable package (`docs/packages/system-patches.md`): the patch
+   image builder and its check, the ARM build of `qd/ArabicText.cpp` and
+   the paragraph changes, the installer part, a run on Einstein.
 1. Better models: the dots bound to their letters (a position-aware
    alignment, or the low level's placement extended to marks below the
    line), more alignment rounds and variants, and a floor on a variant's
