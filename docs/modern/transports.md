@@ -24,7 +24,7 @@ every application, the ROM's and third parties', with no change to them.
 |---|---|---|
 | **Internet mail** | text, and frames as attachments, by SMTP; receives by IMAP into the In Box | TLS for endpoints (`docs/modernization-plan.md`, Phase 1); account settings in Internet Setup's style; passwords in the host's key store, never in a soup |
 | **Mesh** | text to a MeshCore contact or channel | the mesh engine (`docs/host-tdeck-pro-mesh.md`), now an application of its own |
-| **Files** | anything, written to a host directory: text as `.txt`, a note's ink and shapes as PDF or PNG, a frame as NSOF, a picture as its original file | a host native for the directory; the PostScript and page drawing the print path already has |
+| **Files** ("Save a copy to a folder"; `files.md` has files as entries) | anything, written to a directory of a file store: text as `.txt`, a note's ink and shapes as PDF or PNG, a frame as NSOF, a picture as its original file | a host native for the directory; the PostScript and page drawing the print path already has |
 | **Another Newton** | any frame, to a paired device over the network | the pairing of `sync.md`; the beam transport's receiving side as the model |
 | **Share to the host** | text or a picture to the host's clipboard or share mechanism | per host; nothing where the Newton is the whole system |
 

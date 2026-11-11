@@ -15,7 +15,9 @@ do not depend on which devices the OS runs on, except where a page says so.
 | `ink-and-text.md` | Ink kept after recognition: searchable, shown as ink or text | ink words, deferred recognition |
 | `structure.md` | Lists, tables, sums, diagrams and live details recognised from what is written | the recogniser arbitration, stationery |
 | `marking.md` | A mark beside any line, and one list of everything marked | paragraph gestures, soups |
-| `camera-gallery.md` | A Camera and a Gallery, with albums in a folder tree | large binaries, stationery, the host's services |
+| `files.md` | Real files as Newton entries, drives as stores, and viewing other systems' formats | stores, large binaries, stationery, the dock's translators |
+| `web.md` | Browsing: a borrowed engine on capable devices, pages as notes on small ones | the Notepad, the host's network |
+| `camera-gallery.md` | A Camera and a Gallery, with albums as real folders | `files.md`, stationery, the host's services |
 | `malleable.md` | Looking inside and changing the running system on the device | frames, the compiler and decompiler |
 
 ## Rules common to all of them
@@ -48,8 +50,8 @@ independent. A suggested order of building:
 1. Ink kept and searchable; marking (small, self-contained, daily use).
 2. Structure: checkboxes and lists, then live details, then the rest.
 3. Permissions, then the Assistant.
-4. Camera and Gallery.
-5. Transports, then sync.
-6. The malleable system.
+4. Files, then Camera and Gallery, then foreign formats.
+5. Transports, then sync; the web as notes.
+6. The malleable system; a full web engine.
 
 Every page ends with the decisions that are the owner's.
