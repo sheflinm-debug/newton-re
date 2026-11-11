@@ -1,0 +1,39 @@
+// A card that is not storage, of a type the ROM does not know, handed to
+// the card handler's WeirdCardInserted (the frame at magic pointer @541).
+// For such a type the ROM opens the root's child of that name, but reads
+// the type as the variable cardType, which there is none of, where the
+// loop's variable was meant (ROM BUG, docs/curiosities.md "A card the ROM
+// does not know reads a variable that is not there").  Fixed (the
+// default), the root's child named after the type is opened; with
+// NEWTON_ROM_BUGS=1 the call throws -48807 (undefined variable), as on a
+// MessagePad without System Update 717260 (ctests host.NewtonWeirdCard
+// and ...romBugs).
+//
+//   build/host/host/newton --headless 60 --script src/host/demo/weird-card.ns
+
+HostInclude("common.ns");			// waitFor
+
+wcdOpened := nil;
+wcdError := nil;
+wcdType := '|weirdCardTest:Test|;
+GetRoot().(wcdType) := {Open: func() wcdOpened := true};
+try
+	@541:WeirdCardInserted(0, [wcdType])
+onexception |evt.ex| do
+	wcdError := CurrentException().data.errorCode;
+RemoveSlot(GetRoot(), wcdType);
+Print("weird-card: RomBugFixed " & (if RomBugFixed() then "true" else "nil")
+	& ", opened " & (if wcdOpened then "true" else "nil") & ", error " & wcdError);
+if RomBugFixed() then begin
+	if wcdOpened and not wcdError then
+		Print("weird-card: the root's child for the card's type opened: ok")
+	else
+		Print("weird-card: FAILED (the child was not opened)");
+end else begin
+	if wcdError = -48807 and not wcdOpened then
+		Print("weird-card: the ROM's WeirdCardInserted threw -48807: ok")
+	else
+		Print("weird-card: FAILED (the ROM's code did not throw -48807)");
+end;
+Print("weird-card: done");
+HostQuit();

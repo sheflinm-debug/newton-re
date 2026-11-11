@@ -9,6 +9,20 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-11: Network cards on an unpatched ROM - WeirdCardInserted's card type
+
+The NewtonTalk list reports NIE network cards failing with -48807 on a US
+717006 ROM until System Update 717260 is installed
+(`docs/newtontalk-findings.md`). The update does not touch
+`InstallFormPart`, the other card bug that throws -48807. What it does is
+replace the card handler's frame (@541), and in its copy
+`WeirdCardInserted` reads the loop's card type where the ROM's reads a
+variable `cardType` that does not exist. The bug is ported in `romsrc/` and
+fixed the same way behind `RomBugFixed()`. Demo `weird-card.ns` and ctests
+`host.NewtonWeirdCard` and `.romBugs` cover both behaviours.
+(`docs/curiosities.md`, "A card the ROM does not know reads a variable
+that is not there".) Not reproduced with a real NIE network card.
+
 ## 2026-11-11: The Arabic engine audited on the Newton, retrained, and given a lexicon
 
 The owner wrote "هذا إمتحان" and "هو وهي" and the engine had trouble.

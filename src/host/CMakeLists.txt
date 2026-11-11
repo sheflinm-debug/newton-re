@@ -1631,6 +1631,26 @@ if(Python3_FOUND)
                              PASS_REGULAR_EXPRESSION "RomBugFixed nil, cardSocket .*the ROM.s InstallFormPart threw before the socket: ok.*card-form-package: done, 0 failed"
                              FAIL_REGULAR_EXPRESSION "waited in vain|FAILED")
     endif()
+    # a card that is not storage, of a type the ROM does not know
+    # (demo/weird-card.ns): the card handler's WeirdCardInserted reads the
+    # type as the variable cardType, fixed by default in romsrc/
+    # (RomBugFixed()) as System Update 717260 fixes it - the root's child for
+    # the type is opened; .romBugs, with NEWTON_ROM_BUGS=1, the ROM's code,
+    # which throws -48807
+    add_test(NAME host.NewtonWeirdCard
+             COMMAND newton --headless 60 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/weird-card.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(host.NewtonWeirdCard PROPERTIES TIMEOUT 120
+                         ENVIRONMENT "NEWTON_ROM_BUGS=0"
+                         PASS_REGULAR_EXPRESSION "RomBugFixed true, opened true.*the root.s child for the card.s type opened: ok.*weird-card: done"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|FAILED")
+    add_test(NAME host.NewtonWeirdCard.romBugs
+             COMMAND newton --headless 60 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/weird-card.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(host.NewtonWeirdCard.romBugs PROPERTIES TIMEOUT 120
+                         ENVIRONMENT "NEWTON_ROM_BUGS=1"
+                         PASS_REGULAR_EXPRESSION "RomBugFixed nil, opened nil, error -48807.*the ROM.s WeirdCardInserted threw -48807: ok.*weird-card: done"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|FAILED")
     # an ATA card taken on as far as the ROM goes (demo/ata-card.ns): its
     # partition map read through TATASimple over the host's model of the
     # card (hal/host/HostATA.cpp), the driver in its Apple_Newton_Driver
