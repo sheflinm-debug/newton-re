@@ -43,6 +43,18 @@ the way are all in `docs/work-log.md`.
   panel's share), and the HiDPI shadow
   (`docs/host-hidpi.md`) - the owner to decide before any of it is built.
 
+## Proposed: the modernization plan (2026-11-11)
+
+`docs/modernization-plan.md` orders the way to phones, tablets and macOS
+into phases: a portable host layer, TLS for endpoints and finger input
+first, then the platforms.  Nothing of it is built; four decisions in it
+wait on the owner (its last section).
+
+`docs/modern/` specifies the plan's last phase, the additions for today's
+use: ink kept and searchable, structure recognition, marking, a Camera and
+a Gallery, permissions, a model behind the Assistant, transports, sync and
+on-device inspection.  Proposals too; its README orders them.
+
 ## In progress
 
 ### MeshCore on the T-Deck Pro (branch `tdeck-meshcore`, 2026-10-13)
