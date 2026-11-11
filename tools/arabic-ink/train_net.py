@@ -33,6 +33,20 @@ dx, dy (to the previous point), the pen down flag, 1 at a stroke's
 first point, 1 at its last, and y above the base line (the 75th
 percentile of y).  A stroke's points are resampled to a step of 0.05
 of the height (STEP) so slow and fast writing look alike.
+
+Words and phrases (2026-11-11, the audit's finding: tools/arabic-ink/audit.py):
+the alphabet's last class is the space, so the network reads a line of
+writing - several words - and puts the spaces itself; on the Newton the
+gap between two words is no wider than the gaps inside a word (between its
+pieces: إ | متحا | ن), and no rule on the strokes' boxes told them apart.
+--phrases N adds N phrases made of two or three training samples set side
+by side, right to left, a random gap apart (compose()); ADAB's names of two
+words keep their space.  --pixels P draws a share P of the training
+samples again at a size the Newton's screen gives (an ink height of 6 to
+20 pixels) rounded to whole pixels, as the tablet hands them over (the
+audit found the screen's grid cost a quarter of the user's words).
+--init from a network trained before the space class takes its weights,
+the new class's starting near zero.
 """
 
 import argparse
@@ -112,9 +126,58 @@ def featurize(strokes):
     return seq
 
 
-def make_alphabet():
+def make_alphabet(space=True):
     chars = list(arabic.TO_CODE.keys())
-    return [None] + chars          # 0: the CTC blank
+    return [None] + chars + ([" "] if space else [])     # 0: the CTC blank; the space last
+
+
+def ink_frame(strokes):
+    """(ink height: the 10th to 90th percentile of y; base line: the 75th;
+    the left and right edges)."""
+    xs = [s[i] for s in strokes for i in range(0, len(s), 4)]
+    ys = [s[i + 1] for s in strokes for i in range(0, len(s), 4)]
+    return max(percentile(ys, 0.9) - percentile(ys, 0.1), 1.0), percentile(ys, 0.75), min(xs), max(xs)
+
+
+def compose(samples, rng):
+    """Samples [(word, strokes)] written one after another on one line,
+    right to left, as a phrase: each scaled to an ink height of 100, base
+    lines together, a gap of 0.3 to 1.3 ink heights between one word's
+    left edge and the next one's right.  ==> (the words with spaces, the
+    strokes)."""
+    out = []
+    right = 0.0
+    for k, (word, strokes) in enumerate(samples):
+        h, base, lo, hi = ink_frame(strokes)
+        scale = 100.0 / h
+        if k > 0:
+            right -= rng.uniform(0.3, 1.3) * 100.0
+        for st in strokes:
+            ns = []
+            for i in range(0, len(st), 4):
+                ns += [right - (hi - st[i]) * scale, (st[i + 1] - base) * scale, 0, 0.5]
+            out.append(ns)
+        right -= (hi - lo) * scale
+    return " ".join(w for w, _ in samples), out
+
+
+def pixelate(strokes, rng):
+    """The strokes as the Newton's screen would have them: scaled to an ink
+    height of 6 to 20 pixels and rounded to whole pixels, a point that
+    rounds onto the one before dropped."""
+    h, base, lo, hi = ink_frame(strokes)
+    scale = rng.uniform(6.0, 20.0) / h
+    ox, oy = rng.random(), rng.random()
+    out = []
+    for st in strokes:
+        ns = []
+        for i in range(0, len(st), 4):
+            x, y = round((st[i] - lo) * scale + ox), round((st[i + 1] - base) * scale + oy)
+            if len(ns) >= 4 and ns[-4] == x and ns[-3] == y:
+                continue
+            ns += [x, y, 0, 0.5]
+        out.append(ns)
+    return out
 
 
 # ---------------------------------------------------------------- the net
@@ -151,8 +214,15 @@ def load_from_onnx(torch, model, path, hidden):
     with torch.no_grad():
         model.inp.weight.copy_(inits[matmuls[0].input[1]].t())
         model.inp.bias.copy_(inits["inp.bias"])
-        model.out.weight.copy_(inits[matmuls[1].input[1]].t())
-        model.out.bias.copy_(inits["out.bias"])
+        ow, ob = inits[matmuls[1].input[1]].t(), inits["out.bias"]
+        n = ow.shape[0]
+        # (a network trained before the space class: its classes are the
+        # first n; the new ones keep their fresh weights, scaled down)
+        model.out.weight[:n].copy_(ow)
+        model.out.bias[:n].copy_(ob)
+        if n < model.out.weight.shape[0]:
+            model.out.weight[n:].mul_(0.1)
+            model.out.bias[n:].fill_(float(ob.mean()))
         for layer, gru in enumerate(grus):
             W, R, B = inits[gru.input[1]], inits[gru.input[2]], inits[gru.input[3]]
             for d, suffix in ((0, ""), (1, "_reverse")):
@@ -260,6 +330,9 @@ def main():
     ap.add_argument("--oversample", nargs=2, metavar=("DIR", "TIMES"), action="append", default=[],
                     help="a samples directory counted TIMES over in the training set (a writer's own words, say)")
     ap.add_argument("--lr", type=float, default=2e-3)
+    ap.add_argument("--phrases", type=int, default=0, help="this many phrases made of training samples (needs the space class)")
+    ap.add_argument("--pixels", type=float, default=0.0, help="the share of training samples drawn at screen size in whole pixels")
+    ap.add_argument("--no-space", action="store_true", help="the alphabet without the space class (the networks before 2026-11-11)")
     args = ap.parse_args()
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -270,34 +343,55 @@ def main():
     torch.set_num_threads(os.cpu_count() or 4)
     random.seed(args.seed)
 
-    alphabet = make_alphabet()
+    alphabet = make_alphabet(not args.no_space)
     index = {ch: i for i, ch in enumerate(alphabet) if ch is not None}
+    space = " " in index
 
-    def prepare(dirs):
+    def usable(word):
+        return all(ch in index or ch == " " for ch in word)
+
+    def raw(dirs):
+        return [(w if space else w.replace(" ", ""), st) for d in dirs for w, st in load_dir(d) if usable(w)]
+
+    def feats_of(samples, pixels=0.0, rng=None):
         out = []
-        for d in dirs:
-            for word, strokes in load_dir(d):
-                if any(ch not in index and ch != " " for ch in word):
-                    continue
-                feats = featurize(strokes)
-                if feats is None or len(feats) < 2 * len(word) + 1:
-                    continue
-                out.append((word.replace(" ", ""), feats))
+        for word, strokes in samples:
+            if pixels and rng.random() < pixels:
+                strokes = pixelate(strokes, rng)
+            f = featurize(strokes)
+            if f is None or len(f) < 2 * len(word) + 1:
+                continue
+            out.append((word, f))
         return out
 
-    train = prepare(args.train)
-    random.shuffle(train)
+    def phrases(samples, n, rng):
+        return [compose(rng.sample(samples, 2 if rng.random() < 0.7 else 3), rng) for _ in range(n)]
+
+    rng = random.Random(args.seed)
+    train_raw = raw(args.train)
+    random.shuffle(train_raw)
     if args.limit:
-        train = train[:args.limit]
-    for d, times in args.oversample:
-        extra = prepare([d])
-        train += extra * int(times)
-        log("%s: %d samples, counted %s times" % (d, len(extra), times))
-    valid = prepare(args.validate)
-    random.shuffle(valid)
+        train_raw = train_raw[:args.limit]
+    own = [(d, raw([d]), int(times)) for d, times in args.oversample]
+    made = phrases(train_raw + [x for _, e, _ in own for x in e], args.phrases, rng) if space and args.phrases else []
+    train = feats_of(train_raw + made, args.pixels, rng)
+    for d, extra, times in own:
+        for _ in range(times):
+            train += feats_of(extra, args.pixels, rng)
+        log("%s: %d samples, counted %d times" % (d, len(extra), times))
+    if made:
+        log("%d phrases made of two or three training samples" % len(made))
+    valid_raw = raw(args.validate)
+    random.shuffle(valid_raw)
+    valid = feats_of(valid_raw)
+    valid_phrases = valid_pixels = []
+    if space:
+        vrng = random.Random(7)
+        valid_phrases = feats_of(phrases(valid_raw, max(50, args.validate_limit // 5), vrng))
+        valid_pixels = feats_of(valid_raw[:args.validate_limit], 1.0, vrng)
     vocabulary = None
     if args.vocabulary:
-        vocabulary = sorted(set(w.replace(" ", "") for w, _ in load_dir(args.vocabulary)))
+        vocabulary = sorted(set(w if space else w.replace(" ", "") for w, _ in load_dir(args.vocabulary)))
     log("%d training samples, %d validation, %d classes%s" % (len(train), len(valid), len(alphabet),
         ", vocabulary of %d words" % len(vocabulary) if vocabulary else ""))
 
@@ -333,6 +427,11 @@ def main():
             opt.step()
             total += loss.item() * len(batch)
         cer, acc, vacc = evaluate(torch, model, valid, alphabet, index, vocabulary if epoch == args.epochs or epoch % 5 == 0 else None, args.validate_limit)
+        if valid_phrases:
+            pcer, pacc, _ = evaluate(torch, model, valid_phrases, alphabet, index)
+            xcer, xacc, _ = evaluate(torch, model, valid_pixels, alphabet, index)
+            log("          phrases: letters wrong %.1f%%, right %.1f%%; at screen size: letters wrong %.1f%%, words right %.1f%%"
+                % (100 * pcer, 100 * pacc, 100 * xcer, 100 * xacc))
         log("epoch %2d: loss %.3f, validation: letters wrong %.1f%%, words right %.1f%%%s (%.0f s)"
             % (epoch, total / max(1, len(train)), 100 * cer, 100 * acc,
                ", with the vocabulary %.1f%%" % (100 * vacc) if vocabulary and (epoch == args.epochs or epoch % 5 == 0) else "",

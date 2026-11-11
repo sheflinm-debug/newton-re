@@ -9,6 +9,7 @@
 
 #include "ArabicRecognizer.h"
 #include "ArabicNet.h"
+#include "ArabicLexicon.h"
 #include "WordEngines.h"		// kHostWordEngineInterface
 #include "WordUnit.h"
 #include "Words.h"				// FindBaseline
@@ -71,16 +72,68 @@ ProgramDirectory(char* dir, size_t size)
 }
 
 
-static Boolean
+// NEWTON_TRACE_ARABIC: 1 each reading, 2 each stroke's grouping as well
+static int
 Tracing(void)
 {
 	static int sTracing = -1;
 	if (sTracing < 0)
 	{
 		const char* value = getenv("NEWTON_TRACE_ARABIC");
-		sTracing = value != nil && *value == '1';
+		sTracing = value != nil && *value >= '1' && *value <= '9' ? *value - '0' : 0;
 	}
-	return sTracing != 0;
+	return sTracing;
+}
+
+
+// The lexicon, read once: the file NEWTON_ARABIC_LEXICON names ("none": no
+// lexicon, the free reading alone), else arabic.lex beside the program,
+// else build/arabic-lex/arabic.lex under the working directory (where
+// tools/arabic-ink/build_lexicon.py writes it); the varieties read by,
+// NEWTON_ARABIC_VARIETIES (its letters: m c e l g h n d), all by default.
+static ArabicLexicon*
+Lexicon(void)
+{
+	static ArabicLexicon* sLex = nil;
+	static Boolean sLooked = false;
+	if (!sLooked)
+	{
+		sLooked = true;
+		const char* varieties = getenv("NEWTON_ARABIC_VARIETIES");
+		const char* path = getenv("NEWTON_ARABIC_LEXICON");
+		if (path != nil && *path != 0)
+		{
+			if (strcmp(path, "none") != 0)
+				sLex = ArabicLexiconLoad(path, varieties);
+		}
+		else
+		{
+			char beside[1024];
+			const char* tries[] = { "arabic.lex", "build/arabic-lex/arabic.lex", "../build/arabic-lex/arabic.lex" };
+			if (ProgramDirectory(beside, sizeof(beside)) && strlen(beside) + 12 < sizeof(beside))
+			{
+				strcat(beside, "arabic.lex");
+				FILE* f = fopen(beside, "rb");
+				if (f != nil)
+				{
+					fclose(f);
+					sLex = ArabicLexiconLoad(beside, varieties);
+				}
+			}
+			for (unsigned i = 0; sLex == nil && i < sizeof(tries) / sizeof(tries[0]); i++)
+			{
+				FILE* f = fopen(tries[i], "rb");
+				if (f != nil)
+				{
+					fclose(f);
+					sLex = ArabicLexiconLoad(tries[i], varieties);
+				}
+			}
+			if (sLex == nil)
+				fprintf(stderr, "[arabic] no lexicon: NEWTON_ARABIC_LEXICON names none and no arabic.lex is beside the program or under build/arabic-lex (the engine reads letter by letter)\n");
+		}
+	}
+	return sLex;
 }
 
 
@@ -162,14 +215,19 @@ TArabicRecognizer::Initialize(void)
 }
 
 
-// A stroke offered: it joins the word being built when it lies where that
-// word is - within a short gap of the word's box along the line (the
-// dots and marks over and under a word fall within it, the next word
-// starts a word gap away), on or about its line - and the pen came down
-// again within a few seconds; otherwise that word is closed and this
-// stroke starts the next.  (The ink-only engine groups by the clock
-// alone, and under load, or with a slow hand, a word's strokes fell into
-// several units.)
+// A stroke offered: it joins the writing being built when it lies on the
+// same line and runs on from it - to its left (the next letters, the next
+// piece of the word, the next word: Arabic is written right to left) by no
+// more than two and a half of its heights, or back over it (the dots and
+// marks written after the letters), and no further right than its right
+// edge and a little - and the pen came down again within a few seconds;
+// otherwise that writing is closed and this stroke starts the next.  The
+// writing may be several words: the network reads the gaps between them
+// as spaces.  (The audit, docs/recognition/arabic.md "The audit": the gap
+// between two words is no wider than the gaps between the pieces of one
+// word - إ | متحا | ن - and the word-at-a-time rule, three quarters of
+// a height either way, cut the user's words into pieces and ran their
+// words together.)
 void
 TArabicRecognizer::Group(TStrokeUnit* stroke)
 {
@@ -183,12 +241,20 @@ TArabicRecognizer::Group(TStrokeUnit* stroke)
 		Fixed height = gb.bottom - gb.top;
 		if (height < ToFixed(12))
 			height = ToFixed(12);
-		Fixed gap = height * 3 / 4;				// along the line: three quarters of the word's height
+		Fixed ahead = height * 5 / 2;			// to the left: the next word, a word gap away
+		Fixed back = height * 3 / 4;			// to the right: a mark a little past the first letter
 		Fixed reach = height * 3 / 2;			// above or below: a line and a half (a dot over a tall word)
-		Boolean along = sb.left <= gb.right + gap && sb.right >= gb.left - gap;
+		Boolean along = sb.left <= gb.right + back && sb.right >= gb.left - ahead;
 		Boolean about = sb.top <= gb.bottom + reach && sb.bottom >= gb.top - reach;
 		ULong pause = GetStartTime(stroke) - GetEndTime(group);
 		Boolean soon = GetStartTime(stroke) >= GetEndTime(group) && pause <= 4 * 60;		// (ticks: four seconds)
+		if (Tracing() >= 2)
+			fprintf(stderr, "[arabic] group: stroke %.0f-%.0f,%.0f-%.0f; writing %.0f-%.0f,%.0f-%.0f of %ld strokes, %lu-%lu; stroke %lu-%lu: %s%s%s\n",
+					sb.left / 65536.0, sb.right / 65536.0, sb.top / 65536.0, sb.bottom / 65536.0,
+					gb.left / 65536.0, gb.right / 65536.0, gb.top / 65536.0, gb.bottom / 65536.0, (long) SubCount(group),
+					(unsigned long) GetStartTime(group), (unsigned long) GetEndTime(group),
+					(unsigned long) GetStartTime(stroke), (unsigned long) GetEndTime(stroke),
+					along ? "" : "not along ", about ? "" : "not about ", soon ? "" : "not soon ");
 		if (along && about && soon)
 		{
 			AddSub(group, stroke);
@@ -196,6 +262,8 @@ TArabicRecognizer::Group(TStrokeUnit* stroke)
 		}
 		EndSubs(group);
 	}
+	else if (Tracing() >= 2)
+		fprintf(stderr, "[arabic] group: no writing in progress (found %d)\n", (int) found);
 	MakeNewGroupFromStroke(stroke);
 }
 
@@ -236,14 +304,29 @@ TArabicRecognizer::Read(TWRecUnit* unit)
 	long room = ArabicNetStepsFor(xy, counts, nStrokes, 0);
 	float* feats = (float*) malloc(room * F * sizeof(float));
 	long steps = ArabicNetFeaturize(net, xy, counts, nStrokes, feats, room);
-	UniChar text[64];
+	UniChar text[256];
 	long len = 0;
+	enum { kReadings = 4 };
+	ArabicReading readings[kReadings];
+	long nReadings = 0;
 	if (steps > 0 && steps <= room)
 	{
 		float* logits = (float*) malloc(steps * C * sizeof(float));
 		if (ArabicNetRun(net, feats, steps, logits) == 0)
 		{
-			len = ArabicNetGreedy(net, logits, steps, text, 64);
+			// the readings: by the lexicon (the one taken first, then
+			// the alternatives the corrector offers), or the free one
+			UniChar* alphabet = (UniChar*) malloc(C * sizeof(UniChar));
+			for (long j = 0; j < C; j++)
+				alphabet[j] = ArabicNetClassChar(net, j);
+			nReadings = ArabicLexiconRead(Lexicon(), logits, steps, alphabet, C, readings, kReadings);
+			free(alphabet);
+			if (nReadings > 0)
+			{
+				for (len = 0; readings[0].text[len] != 0 && len < 255; len++)
+					text[len] = readings[0].text[len];
+				text[len] = 0;
+			}
 			// how sure: the softmax share of the best class, over the steps
 			// whose best class is a character
 			double sum = 0;
@@ -270,14 +353,17 @@ TArabicRecognizer::Read(TWRecUnit* unit)
 	free(feats);
 	free(xy);
 	free(counts);
-	if (len > 0)
+	// the reading taken, then the alternatives, each scored a step worse
+	for (long r = 0; r < nReadings; r++)
 	{
+		if (readings[r].text[0] == 0)
+			continue;
 		long slot = AddWordInterpretation(unit);
 		if (slot >= 0)
 		{
-			SetWordString(unit, (ULong) slot, text);
+			SetWordString(unit, (ULong) slot, readings[r].text);
 			SetLabel(unit, (ULong) slot, kArabicWordLabel);
-			SetScore(unit, (ULong) slot, (ULong) (1000 - 10 * fConfidence));
+			SetScore(unit, (ULong) slot, (ULong) (1000 - 10 * fConfidence + 100 * r));
 		}
 	}
 	if (Tracing())
@@ -285,7 +371,15 @@ TArabicRecognizer::Read(TWRecUnit* unit)
 		fprintf(stderr, "[arabic] %ld strokes, %ld points, %ld steps: read %ld characters (", nStrokes, total, steps, len);
 		for (long i = 0; i < len; i++)
 			fprintf(stderr, "%s%04x", i == 0 ? "" : " ", (unsigned) text[i]);
-		fprintf(stderr, "), confidence %ld\n", fConfidence);
+		fprintf(stderr, "), confidence %ld, %s\n", fConfidence,
+				nReadings > 0 && readings[0].fromLexicon ? "by the lexicon" : "free");
+		for (long r = 1; r < nReadings; r++)
+		{
+			fprintf(stderr, "[arabic]   or (");
+			for (long i = 0; readings[r].text[i] != 0; i++)
+				fprintf(stderr, "%s%04x", i == 0 ? "" : " ", (unsigned) readings[r].text[i]);
+			fprintf(stderr, ")%s\n", readings[r].fromLexicon ? "" : " free");
+		}
 	}
 }
 

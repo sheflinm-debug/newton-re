@@ -9,6 +9,27 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-11: The Arabic engine audited on the Newton, retrained, and given a lexicon
+
+The owner wrote "هذا إمتحان" and "هو وهي" and the engine had trouble.
+`tools/arabic-ink/audit.py` now writes known samples onto a headless
+Notepad with a paced pen and scores the page against the offline and
+screen-point readings.  Its first runs overstated the Newton side's
+losses: written all at once, the strokes carried times the engine took
+for long pauses.  Paced, it found an endless re-insertion of a
+right-to-left word written over text (fixed: it goes in at the caret), a
+grouping by the clock alone (now by place along the line too), and a
+network with no space and no training at the screen's size (retrained:
+`train_net.py --phrases --pixels`).  Then a composite lexicon, standard
+and dialect words tagged by variety (`fetch_lexicons.py`,
+`build_lexicon.py`), read by a beam search in the engine
+(`recognition/ArabicLexicon.h`, mirroring `lexdecode.py`, ctest
+`recognition.ArabicLexicon`), its constants tuned on held-out ADAB
+writers and the owner's own samples kept as the end test.  The details
+and numbers: `docs/recognition/arabic.md`, "The audit" and "The lexicon".
+The owner ruled out Persian training data (the network learns letter
+sequences, not only shapes).
+
 ## 2026-10-14: Network printers on the reMarkable and the T-Deck Pro
 
 The owner could not print from either device: the reMarkable no longer

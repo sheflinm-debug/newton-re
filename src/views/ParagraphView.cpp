@@ -4410,6 +4410,18 @@ TParagraphView::HandleWord(const UniChar* text, ULong length, const Rect& box,
 
 	if (score == 2)
 		SetFinderBelowParagraph(&finder);
+	else if (rtl && gRootView->fCaretView == this)
+	{
+		// DEVIATION: a right-to-left word is not looked for in the text
+		// it was written over: that search (FindWordInParagraph and its
+		// ReplaceCharacter) works in the line's left-to-right geometry,
+		// the mirror of what the page shows, and the pieces of a word
+		// written over the text of its first piece were taken for letters
+		// corrected, read again and put in again without end (the audit,
+		// docs/recognition/arabic.md).  It goes in at the caret, below.
+		if (!reallyDoIt)
+			return score;
+	}
 	else
 	{
 		FindWordInParagraph(&finder);

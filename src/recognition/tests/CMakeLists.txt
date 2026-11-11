@@ -150,3 +150,16 @@ if(EXISTS "${NEWTON_ARABIC_NET}.anet" AND EXISTS "${NEWTON_ARABIC_NET}.sample.bi
 else()
     message(STATUS "no Arabic network at ${NEWTON_ARABIC_NET}.anet: recognition.ArabicNet is not registered")
 endif()
+
+# the engine's lexicon decoder held to tools/arabic-ink/lexdecode.py: wants
+# the composite lexicon (build_lexicon.py) and the check lexdecode.py
+# --fixture writes; registered when both exist
+set(NEWTON_ARABIC_LEXICON "${CMAKE_SOURCE_DIR}/../build/arabic-lex/arabic.lex" CACHE STRING "the Arabic lexicon, for recognition.ArabicLexicon")
+set(NEWTON_ARABIC_LEXICON_CHECK "${CMAKE_SOURCE_DIR}/../build/arabic-lex/lexdecode-check.bin" CACHE STRING "lexdecode.py's check, for recognition.ArabicLexicon")
+add_executable(test_ArabicLexicon test_ArabicLexicon.cpp)
+target_link_libraries(test_ArabicLexicon PRIVATE recognition)
+if(EXISTS "${NEWTON_ARABIC_LEXICON}" AND EXISTS "${NEWTON_ARABIC_LEXICON_CHECK}")
+    add_test(NAME recognition.ArabicLexicon COMMAND test_ArabicLexicon "${NEWTON_ARABIC_LEXICON}" "${NEWTON_ARABIC_LEXICON_CHECK}")
+else()
+    message(STATUS "no Arabic lexicon or its check under build/arabic-lex: recognition.ArabicLexicon is not registered")
+endif()

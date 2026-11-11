@@ -313,6 +313,105 @@ Arabic word), and a line of mixed scripts is runs, not Unicode's
 algorithm.  NOT YET: the lam-alif ligature, the caret in visual order,
 Arabic in the ROM's own bitmap fonts (the hosts without a rasteriser).
 
+## The audit (2026-11-11)
+
+The user's report: "هذا إمتحان" written on the Notepad had trouble with
+the second word, "هو وهي" too.  `tools/arabic-ink/audit.py` measures the
+engine where the user meets it: known samples - the user's 42 words,
+held-out ADAB words, phrases of two or three made of them - written with
+the pen onto the Notepad of a headless `newton`, one point a tick as a
+real pen comes (`PacePen(true)`; written all at once the strokes carried
+times the engine took for long pauses, and words split - a fault of the
+harness, not the engine), the page read back and cleared.  Each case is
+also read offline from its own points and from the exact screen points,
+so a loss shows where it happens: the network, the screen's size and
+grid, or the Newton side.
+
+**Established by** the paced audit before and after the changes below:
+
+| | network of 2026-10-14 | the network retrained, phrases and screen size |
+|---|---|---|
+| the user's 42 words, on the Newton | 18 right | 32 right |
+| 60 held-out ADAB words, on the Newton | 32 right | 36 right |
+| 20 phrases, on the Newton | 0 right | 9 right |
+
+What it found and what was done:
+
+- The engine grouped strokes into words by the clock only; a word is now
+  grouped by where its strokes are along the line as well
+  (`ArabicRecognizer.cpp`'s `Group`, trace `NEWTON_TRACE_ARABIC=2`).
+- A right-to-left word written over the text was taken for letters
+  corrected by `FindWordInParagraph`'s left-to-right geometry and put in
+  again without end: it now goes in at the caret (a DEVIATION in
+  `ParagraphView.cpp`'s `HandleWord`).
+- The network had no space: ADAB's 2,334 two-word names had theirs
+  dropped.  It now has one, is trained on phrases made of two or three
+  samples (`train_net.py --phrases`) and on samples shrunk to the
+  screen's 6 to 20 pixels and rounded to whole pixels (`--pixels`); held-out
+  ADAB, graded with the spaces: words right 31.4% to 59.8%, letters
+  wrong 13.9% to 7.8%.  On the screen's points the network now reads as
+  well as on the originals.
+
+## The lexicon (2026-11-11)
+
+The network alone spells letter by letter.  The engine now reads by a
+lexicon: `tools/arabic-ink/fetch_lexicons.py` downloads free word
+sources, `build_lexicon.py` merges them into one of 543,572 words, each
+with its log frequency and the varieties it was found in.  Arabic is
+diglossic, so the standard (fusha: Modern Standard and Classical) and the
+dialects are kept apart by tag, and `NEWTON_ARABIC_VARIETIES` narrows
+what the engine reads by:
+
+| tag | variety | words | sources |
+|---|---|---|---|
+| m | Modern Standard | 411,153 | Wiktionary (Arabic: headwords and inflected forms), CAMeL MSA counts (12.6 billion words), drelhaj MSA |
+| c | Classical | 94,972 | CAMeL Classical counts |
+| e | Egyptian | 11,034 | Wiktionary, drelhaj EGY |
+| l | Levantine | 27,444 | Wiktionary (South and North Levantine), drelhaj LAV |
+| g | Gulf | 4,887 | Wiktionary, drelhaj GLF |
+| h | Hijazi | 8,761 | Wiktionary |
+| n | North African | 13,932 | Wiktionary (Moroccan, Tunisian), drelhaj NOR |
+| d | dialect, unspecified | 184,770 | CAMeL dialect counts (5.8 billion words) |
+
+Not yet: Iraqi, Sudanese, Libyan and Yemeni (Birzeit's Lisan corpora,
+CC BY 4.0; its portal refused connections when fetched).  A word is kept
+as written by hand - no vowel marks, look-alikes folded, 2 to 24 letters
+(a lone letter is a clitic split off in the corpora and let the decoder
+cut a word in two; the longest entries were lists run together).
+
+`recognition/ArabicLexicon.h` reads the network's output by it: a CTC
+beam search in which a prefix is a range of the sorted words (no trie in
+memory) and a range's best frequency ranks a word not yet finished; the
+vowel marks optional; a letter readable from its look-alike at a cost (an
+alif written without its hamza, ta marbuta as ha, alif maqsura as ya);
+several words, with or without a space read between them; and the free
+reading kept when it beats the lexicon's best by a margin (a name, a word
+the lexicon lacks).  It is `tools/arabic-ink/lexdecode.py` step for step;
+ctest `recognition.ArabicLexicon` holds the two to the same readings, in
+the same order, on a check `lexdecode.py --fixture` writes.  The next
+readings go to the corrector as alternatives.
+
+**Established by** `lexdecode.py --tune` on other writers only (300
+held-out ADAB words and 120 phrases made of them; AHWDB was tried and
+left out - the network reads almost none of its stacked "محمد", so it
+only added noise): words 65.7% to 71.7% right, phrases 25.8% to 35.8%.
+Then the end test, the user's own samples, which the tuning never saw:
+words 76.2% to 85.7%, phrases of them 33.3% to 53.3%.  On the Newton
+(the paced audit, vowel marks not graded):
+
+| | without the lexicon | with it |
+|---|---|---|
+| the user's 42 words | 32 right | 35 right |
+| 60 held-out ADAB words | 42 right | 40 right |
+| 20 phrases | 9 right | 12 right |
+
+and the Newton's readings were the offline readings of the screen points
+in every case.  What is left is mostly the network's: a letter misread
+into another real word (شمت for شمس, جيل for جبل - a word-pair model
+would help phrases), and لا, the lam-alif ligature, read as ز.  The
+remedy is handwriting from more writers (`docs/next-steps.md`, "Waiting
+on the owner").
+
 ## As a package for a real Newton (2026-10-27)
 
 The support is wanted installable on a stock MessagePad 2x00 (Einstein

@@ -176,7 +176,16 @@ does not do yet:
 
 ## Waiting on the owner
 
-Nothing at present.
+- **More Arabic handwriting, from other writers** (the network's limit
+  now: `docs/recognition/arabic.md`, "The lexicon").  Arabic only, by the
+  owner's decision (no Persian or other languages in the script).  What
+  exists and needs the owner: Online-KHATT (10,040 lines, 623 writers; its
+  site is gone - ask its corresponding author, Sabri Mahmoud, KFUPM),
+  AltecOnDB (about 150,000 words, 1,000 writers; ask ALTEC or the
+  authors), AOLAH (letters, 90 writers; IEEE DataPort, a free account),
+  and other writers on the capture page (`tools/arabic-ink/serve.py`).
+  AHWDB (200 writers, two texts) is downloaded and converted, waiting for
+  the next retraining with whatever comes.
 
 ## Open
 
