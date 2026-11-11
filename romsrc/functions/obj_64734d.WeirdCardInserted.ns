@@ -12,7 +12,18 @@ func(a1, a2) begin
 					if (l3 = 'comm) then begin
 							l1 := true
 						end else begin
-							if (l5 := GetRoot().(cardType)) then begin
+							// ROM BUG (fixed): the card's type is read as the
+							//  variable cardType, which there is none of, where
+							//  the loop's l3 was meant - so every card of a
+							//  type neither in @271 nor 'comm threw -48807
+							//  (undefined variable): NIE network cards on a
+							//  717006 ROM (docs/curiosities.md, "A card the ROM
+							//  does not know reads a variable that is not
+							//  there").  Apple's System Update 717260 fixes it
+							//  the same way.  The fix reads l3; with
+							//  NEWTON_ROM_BUGS=1 (RomBugFixed() nil) the ROM's
+							//  code runs.
+							if (l5 := GetRoot().(if RomBugFixed() then l3 else cardType)) then begin
 									l5:Open();
 									l2 := true
 								end
