@@ -412,6 +412,30 @@ would help phrases), and لا, the lam-alif ligature, read as ز.  The
 remedy is handwriting from more writers (`docs/next-steps.md`, "Waiting
 on the owner").
 
+## More writers (2026-11-11)
+
+AHWDB (`tools/arabic-ink/fetch_ink.py`, `ink_sets.py ahwdb`): 200
+writers' "محمد" and "محمد عبدالله", written with a finger, most with م
+stacked over ح as the name is usually written.  160 writers (3 trials of
+each text) went into a retraining of three epochs from the network
+before; the other 40 were held out.  Read by the lexicon:
+
+| | network before | with AHWDB |
+|---|---|---|
+| AHWDB's 40 held-out writers, "محمد" | 2.5% | 69.2% |
+| the same, "محمد عبدالله" | 0% | 40.8% |
+| 300 held-out ADAB words | 71.7% | 70.0% |
+| the user's 42 words | 85.7% | 81.0% |
+| phrases of the user's words | 53.3% | 56.7% |
+
+A new hand is learnt from a few hundred samples of it; what is learnt
+for one costs a little elsewhere.  The user's samples are in both
+networks' training (25 times over), so their rows are not a clean test:
+words written fresh are.  For more writers the capture page is
+published as a claude.ai artifact that keeps an anonymous id for each
+writer (`capture.html`, `ink_sets.py writers`), so a writer can be held
+out whole.
+
 ## As a package for a real Newton (2026-10-27)
 
 The support is wanted installable on a stock MessagePad 2x00 (Einstein
