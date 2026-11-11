@@ -153,7 +153,10 @@ available:
 - ink kept after recognition, searchable, shown as handwriting or text;
 - structure and live details recognised from what is written;
 - marking a line, and one list of everything marked;
-- a Camera and a Gallery with albums in a folder tree;
+- real files as Newton entries, drives as stores, other systems' formats
+  translated or viewed;
+- a Camera and a Gallery with albums as real folders;
+- web browsing: a borrowed engine, or pages turned into notes;
 - permissions for packages;
 - a language model behind the Assist button;
 - new transports, and sync between Newtons with no cloud owner;

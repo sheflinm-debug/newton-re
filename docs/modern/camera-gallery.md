@@ -8,44 +8,37 @@
   as bitmaps or PICTs.
 - No file system. Data is entries in soups. Filing is one level: an entry's
   `labels` slot names one folder, and there are no folders inside folders.
-  So there is no directory tree to put photographs in; one has to be
-  designed.
+  So there is no directory tree to put photographs in; `files.md`
+  supplies a real one.
 - Large data: a *virtual binary object* keeps a big binary on the store and
-  pages it in as needed (`store:NewVBO`; `docs/stores/README.md`). This is
-  what holds a photograph.
+  pages it in as needed (`store:NewVBO`; `docs/stores/README.md`). A file's
+  content is read the same way (`files.md`).
 - Screens of one, four or (with `--colour`) eight bits a pixel
   (`docs/qd/colour.md`).
 
 ## Pictures as data
 
-A soup `Photos`. One entry a picture:
+A picture is a file (`files.md`): an entry of the `Files` soup under
+`Pictures/`, its `content` the file as taken, untouched. The Gallery is a
+view of the files whose type is a picture, wherever they are; a drive with
+a camera's `DCIM` tree shows its pictures while it is in.
 
-    {class: 'photo,
-     image: <VBO, class 'jpeg: the file as taken, untouched>,
-     thumb: <a small bitmap at the screen's depth, for lists>,
-     width: 4000, height: 3000,
-     timestamp: <minutes>, title: "…",
-     album: "Trips/2026/Jordan",          // the folder tree, see below
-     labels: nil,                          // ordinary filing still works
-     source: 'camera | 'import | 'received,
-     notes: <optional paragraph data, so a picture can be written on>}
+What a picture adds to a file's entry, kept in the file store's side
+directory:
+
+    thumb: <a small bitmap at the screen's depth, for lists>,
+    width: 4000, height: 3000, taken: <minutes, from the file's own data>,
+    source: 'camera | 'import | 'received,
+    notes: <optional paragraph data, so a picture can be written on>
 
 The original file is kept byte for byte, so nothing is lost to the Newton's
-screen depth and a picture exported is the picture taken. Other formats the
-host can decode (PNG, HEIC where the host has it) are kept the same way
-under their own class.
+screen depth, and any other system reading the disk sees
+`Pictures/Trips/2026/Jordan/IMG_0001.jpg`.
 
-**The folder tree.** `album` is a path of names separated by `/`. There are
-no folder objects: a folder exists while a picture's path begins with it,
-plus a small soup `PhotoAlbums` for folders the user made and left empty.
-An index on `album` makes "everything under Trips/" one query. Moving a
-picture or renaming a folder rewrites paths. This gives the Gallery a real
-tree without changing how filing works anywhere else.
-
-**The tree outside the Newton.** The Files transport (`transports.md`)
-exports and imports with the same paths as host directories, so a card or a
-computer sees `Trips/2026/Jordan/IMG_0001.jpg`. Import of a camera card's
-`DCIM` tree keeps its folders as albums.
+**Albums are folders**: the file entry's `path`. Making, renaming and
+moving albums are the Files application's operations on directories. This
+is the folder tree the Newton's one-level filing does not have, and it is
+the real one.
 
 ## Decoding and drawing
 
@@ -66,7 +59,7 @@ frames and a file from a directory of test pictures.
 
 The application: the preview filling the view, a shutter button, front and
 back where there are two, a thumbnail of the last picture that opens the
-Gallery. A picture taken becomes a `Photos` entry in the album "Camera".
+Gallery. A picture taken becomes a file in `Pictures/Camera`.
 Where the host has no camera the application is not installed.
 
 On an e-paper screen the preview is slow by nature: the preview there is a
@@ -84,7 +77,7 @@ is taken.
 - **Write on a picture**: the pen on the full view adds ink over it, kept in
   `notes`, not burned into the image.
 - **Into a note**: a picture dragged or routed to the Notepad is put in the
-  note as a reference to the `Photos` entry with its thumbnail, not a copy.
+  note as a reference to the file's entry with its thumbnail, not a copy.
 
 Stationery: `'photo` is registered as a data type with its viewers
 (`RegDataDef`), so the In Box can show a received picture and other
@@ -92,20 +85,21 @@ applications can show one in place.
 
 ## Camera use by other applications
 
-A proto, "take a picture", any application can open: it answers a `Photos`
-entry. The camera is a permission (`permissions.md`).
+A proto, "take a picture", any application can open: it answers the new
+file's entry. The camera is a permission (`permissions.md`).
 
 ## Tests
 
 With the fake camera: a picture taken appears in "Camera" with its
 thumbnail; the file exported equals the file the fake gave, byte for byte;
-folders made, renamed and moved, the queries right at each step; a `DCIM`
-tree imported; a picture written on, restarted, the ink still there; the
+folders made, renamed and moved, the directory agreeing at each step; a
+`DCIM` tree on a second file store shown; a picture written on, restarted, the ink still there; the
 grid at the four test screen sizes and at one, four and eight bits; a
-24-megapixel file opened without the frames heap growing (it stays a VBO).
+24-megapixel file opened without the frames heap growing (it stays a file).
 
 ## Owner decisions
 
 1. Video: not in this page. Wanted later?
-2. Whether pictures sync (`sync.md`): they are large; default off.
+2. Pictures are files, so the Newton's sync does not carry them
+   (`files.md`); a file-sync service on the host would. Enough?
 3. One vendored decoder for all hosts, or each host's own.
