@@ -12,10 +12,20 @@ Purpose:  AHWDB (Mutah University, 2019; free for research and teaching):
           Many hands, two texts: --per-writer limits what one writer gives
           (the first trials), so that two words do not swamp the training.
 
-Inputs:   build/arabic-ink/downloads/ahwdb{1,2}/unpacked/ (fetch_ink.py).
+          writers: other people's handwriting from the capture page
+          published as a claude.ai artifact (capture.html; its store's
+          "samples" collection, each sample carrying the artifact's
+          anonymous id for its writer), pulled by Claude with the
+          ArtifactData tool (list, out_dir build/arabic-ink/pulled).
+
+Inputs:   build/arabic-ink/downloads/ahwdb{1,2}/unpacked/ (fetch_ink.py);
+          build/arabic-ink/pulled/ (writers).
 Outputs:  build/arabic-ink/ahwdb/<part>/<writer>_<trial>.json, with
-          "set": "ahwdb", "writer".
-Usage:    python tools/arabic-ink/ink_sets.py ahwdb [--per-writer N] [--gap MS]
+          "set": "ahwdb", "writer"; writers past --train-writers go to
+          build/arabic-ink/ahwdb-held/ instead, never trained on.
+          writers: build/arabic-ink/writers/<writer>/<sample>.json.
+Usage:    python tools/arabic-ink/ink_sets.py ahwdb [--per-writer N] [--gap MS] [--train-writers N]
+          python tools/arabic-ink/ink_sets.py writers [--pulled DIR]
 """
 
 import argparse
@@ -72,8 +82,10 @@ def ahwdb(args):
     made = 0
     for part, text in TEXTS.items():
         root = os.path.join(args.downloads, part, "unpacked")
+        held = os.path.join(args.out, "ahwdb-held", part)
         out = os.path.join(args.out, "ahwdb", part)
         os.makedirs(out, exist_ok=True)
+        os.makedirs(held, exist_ok=True)
         files = glob.glob(os.path.join(root, "**", "*.txt"), recursive=True)
         by_writer = {}
         for f in files:
@@ -91,22 +103,54 @@ def ahwdb(args):
                           "strokes": strokes,
                           "slate": {"width": round(max(xs)), "height": round(max(ys))},
                           "pointerTypes": ["touch"]}
-                with open(os.path.join(out, "%d_%d.json" % (writer, trial)), "w", encoding="utf-8") as h:
+                into = held if writer > args.train_writers else out
+                with open(os.path.join(into, "%d_%d.json" % (writer, trial)), "w", encoding="utf-8") as h:
                     json.dump(sample, h, ensure_ascii=False)
                 made += 1
         print("%s: %d writers" % (part, len(by_writer)))
     print("%d samples written to %s" % (made, os.path.join(args.out, "ahwdb")))
 
 
+def writers(args):
+    """The capture page's artifact store, pulled to --pulled (the
+    ArtifactData tool's list with out_dir writes one JSON file a sample,
+    the page's fields perhaps inside a "data" member): each writer's
+    samples under writers/<writer>/, the writer an opaque id the page
+    took from the artifact, never a name."""
+    made = 0
+    seen = set()
+    for f in glob.glob(os.path.join(args.pulled, "**", "*.json"), recursive=True):
+        with open(f, encoding="utf-8") as h:
+            d = json.load(h)
+        d = d.get("data", d) if isinstance(d, dict) else None
+        if not isinstance(d, dict) or not d.get("word") or not d.get("strokes"):
+            continue
+        who = re.sub(r"[^A-Za-z0-9_-]", "_", str(d.get("writer") or "unknown"))
+        seen.add(who)
+        out = os.path.join(args.out, "writers", who)
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, os.path.basename(f)), "w", encoding="utf-8") as h:
+            json.dump(dict(d, set=d.get("set", "words"), source="capture-artifact"), h, ensure_ascii=False)
+        made += 1
+    print("%d samples from %d writers written to %s" % (made, len(seen), os.path.join(args.out, "writers")))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("set", choices=["ahwdb"])
+    ap.add_argument("set", choices=["ahwdb", "writers"])
+    ap.add_argument("--pulled", default="build/arabic-ink/pulled",
+                    help="writers: where the capture artifact's store was pulled to")
     ap.add_argument("--downloads", default="build/arabic-ink/downloads")
     ap.add_argument("--out", default="build/arabic-ink")
     ap.add_argument("--per-writer", type=int, default=10)
     ap.add_argument("--gap", type=float, default=50.0)
+    ap.add_argument("--train-writers", type=int, default=160,
+                    help="writers 1..N for training (ahwdb/), the rest held out (ahwdb-held/)")
     args = ap.parse_args()
-    ahwdb(args)
+    if args.set == "ahwdb":
+        ahwdb(args)
+    else:
+        writers(args)
     return 0
 
 

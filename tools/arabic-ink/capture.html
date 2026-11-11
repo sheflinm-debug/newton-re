@@ -49,7 +49,8 @@ h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
 .prompt { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
 .nav { font: 500 20px var(--font-ui); width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
 .target { text-align: center; min-width: 0; }
-.target .word { font-family: var(--font-ar); font-size: 48px; line-height: 1.2; direction: rtl; }
+.target .word { font-family: var(--font-ar); font-size: 48px; line-height: 1.2; direction: rtl; overflow-wrap: anywhere; }
+.target .word.long { font-size: 34px; }
 .target .meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .target input { font: 400 28px var(--font-ar); direction: rtl; text-align: center; width: 100%; max-width: 320px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--fg); padding: 4px; }
 .slate { position: relative; background: var(--slate); border: 2px solid var(--slate-edge); border-radius: 6px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.18); }
@@ -83,6 +84,8 @@ summary { cursor: pointer; font-weight: 500; }
 
   <div class="sets" role="group" aria-label="Sample set">
     <button class="chip" id="set-words" data-set="words" aria-pressed="true">Words</button>
+    <button class="chip" id="set-everyday" data-set="everyday" aria-pressed="false">Everyday</button>
+    <button class="chip" id="set-phrases" data-set="phrases" aria-pressed="false">Phrases</button>
     <button class="chip" id="set-letters" data-set="letters" aria-pressed="false">Letters</button>
     <button class="chip" id="set-vowelled" data-set="vowelled" aria-pressed="false">Tanwin</button>
     <button class="chip" id="set-free" data-set="free" aria-pressed="false">Free</button>
@@ -117,6 +120,7 @@ summary { cursor: pointer; font-weight: 500; }
   </details>
 
   <p class="note">Each saved sample keeps every pen point with its time and pressure, so the Newton recogniser can be replayed and trained on it. Write naturally, dots and marks last if that is your habit. Three samples of each word is a good start.</p>
+  <p class="note">Writing for someone else's recogniser? Thank you. Your samples are stored with an anonymous writer number, never your name, and are used only to train and test an Arabic handwriting recogniser for the Newton. Use a stylus if you have one; a finger works too once you tick “Accept finger strokes”.</p>
 </div>
 
 <script>
@@ -127,6 +131,11 @@ summary { cursor: pointer; font-weight: 500; }
   // word, with the six letters that never join the next one (ا د ذ ر ز و).
   var SETS = {
     words: ["باب","بيت","كتاب","قلم","شمس","قمر","ولد","بنت","دار","نور","سلام","مدرسة","عربي","كلمة","يد","زرع","ذهب","طالب","ظل","عين","غرفة","فيل","حب","خبز","جمل","صبر","ضوء","ثلج","هذا","لا","ماء","سمك","نهر","جبل","وردة","شجرة","طائرة","مفتاح","ثعلب","حصان"],
+    // The commonest words of written Arabic (the lexicon's top), the
+    // lam-alif ligature among them, as a writer meets them every day.
+    everyday: ["في","من","على","إلى","أن","هذا","هذه","التي","الذي","كان","مع","عن","لا","ما","هو","هي","كل","بعد","قد","ثم","أو","لم","بين","عند","حتى","ذلك","يوم","الله","نحن","أنا","أنت","شيء","الآن","جميل","كبير","صغير","جديد","سنة","وقت","ماذا","لماذا","كيف","أين","متى","نعم","شكرا","اليوم","غدا","أمس","الناس","البيت","العمل","امتحان","سؤال","جواب","صباح","مساء","ليل","أهلا","الأولاد"],
+    // Two to four words on one line, with the spaces as you would leave them.
+    phrases: ["هذا امتحان","هو وهي","صباح الخير","مساء الخير","السلام عليكم","كيف حالك","شكرا جزيلا","إن شاء الله","الحمد لله","أنا بخير","ما اسمك","في البيت","لا أعرف","هذا كتاب","هذه مدرسة","يوم جميل","باب البيت","ماء بارد","على الطاولة","من فضلك","مع السلامة","لا بأس","بسم الله الرحمن الرحيم","أين المدرسة","أنا من هنا"],
     letters: ["ا","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش","ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","ه","و","ي","ء","ة","ى","لا"],
     // The marks that are actually written: tanwin al-fath on alif (the
     // one mark everyday writing keeps), and a few shadda words.  Vowels
@@ -142,6 +151,7 @@ summary { cursor: pointer; font-weight: 500; }
   var counts = {};          // word -> saved count
   var lastSaved = null;     // ref of the most recent save, for "delete last"
   var db = null;            // {add(doc) -> Promise<remove()>}, once storage answers
+  var writer = null;        // the artifact's opaque id for this writer (null on the PC's own server)
 
   try { var saved = JSON.parse(localStorage.getItem("arabic-ink-pos") || "null"); if (saved && SETS[saved.set]) { state.set = saved.set; state.index = saved.index | 0; } } catch (e) {}
 
@@ -233,7 +243,7 @@ summary { cursor: pointer; font-weight: 500; }
       var m = document.createElement("div"); m.className = "meta"; m.textContent = "type what you write, then write it"; t.appendChild(m);
     } else {
       var list = SETS[state.set], w = currentWord();
-      var d = document.createElement("div"); d.className = "word"; d.textContent = w; t.appendChild(d);
+      var d = document.createElement("div"); d.className = "word" + (w.length > 9 ? " long" : ""); d.textContent = w; t.appendChild(d);
       var m2 = document.createElement("div"); m2.className = "meta";
       m2.textContent = (state.index + 1) + " / " + list.length + " · saved " + (counts[w] || 0);
       t.appendChild(m2);
@@ -244,7 +254,7 @@ summary { cursor: pointer; font-weight: 500; }
   }
   function renderGrid() {
     var g = $("grid"); g.textContent = "";
-    var list = state.set === "free" ? Object.keys(counts).filter(function (w) { return SETS.words.indexOf(w) < 0 && SETS.letters.indexOf(w) < 0 && SETS.vowelled.indexOf(w) < 0; }) : SETS[state.set];
+    var list = state.set === "free" ? Object.keys(counts).filter(function (w) { return ["words", "everyday", "phrases", "letters", "vowelled"].every(function (k) { return SETS[k].indexOf(w) < 0; }); }) : SETS[state.set];
     if (!list.length) { var p = document.createElement("p"); p.className = "note"; p.textContent = "Free samples you save appear here."; g.appendChild(p); return; }
     list.forEach(function (w, i) {
       var b = document.createElement("button"); b.className = "cell" + ((counts[w] || 0) >= 3 ? " done" : "") + (state.set !== "free" && i === state.index ? " current" : "");
@@ -287,6 +297,7 @@ summary { cursor: pointer; font-weight: 500; }
       devicePixelRatio: window.devicePixelRatio || 1,
       pointerTypes: Object.keys(state.pointerTypes),
       userAgent: navigator.userAgent.slice(0, 160),
+      writer: writer,
       createdAt: new Date().toISOString()
     };
     $("save").disabled = true;
@@ -353,10 +364,12 @@ summary { cursor: pointer; font-weight: 500; }
     }).catch(function (e) { setStatus("Can't reach the PC: is serve.py running? (" + e.message + ")", "warn"); });
   }
 
-  function useArtifactStore(d) {
+  function useArtifactStore(d, me) {
     var col = d.collection("samples");
+    writer = me;
     db = { add: function (doc) { return col.add(doc).then(function (ref) { return function () { return ref.delete(); }; }); } };
-    col.onSnapshot(function (snap) {
+    // each writer's progress is their own samples only
+    (me ? col.where("writer", "==", me) : col).onSnapshot(function (snap) {
       var c = {};
       snap.docs.forEach(function (doc) { var w = doc.data().word; if (w) c[w] = (c[w] || 0) + 1; });
       counts = c;
@@ -367,8 +380,12 @@ summary { cursor: pointer; font-weight: 500; }
   }
 
   if (!(window.claude && window.claude.use)) useLocalServer();
-  else window.claude.use("db").then(function (d) {
-    if (d) useArtifactStore(d);
+  else Promise.all([window.claude.use("db"), window.claude.use("user")]).then(function (got) {
+    var d = got[0], u = got[1];
+    return (u ? u.id() : Promise.resolve(null)).then(function (me) { return [d, me]; }, function () { return [d, null]; });
+  }).then(function (got) {
+    var d = got[0];
+    if (d) useArtifactStore(d, got[1]);
     else setStatus("Storage unavailable: open this page signed in to Claude to save samples", "warn");
   }, function () { setStatus("Storage unavailable", "warn"); });
 })();
