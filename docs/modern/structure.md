@@ -76,7 +76,8 @@ needs no change to Names beyond a view of the results.
 
 ## Tests
 
-Pen demos with the paced pen of `tools/arabic-ink/audit.py`: each structure
+Pen demos with a paced pen (strokes given at a writer's speed, so the
+recognisers' timing is real): each structure
 written, offered and accepted; written and ignored (the ink untouched);
 accepted and scrubbed (the ink back). Ordinary paragraphs from the existing
 recognition tests give no offers at all - the false-positive check, and the
@@ -91,4 +92,4 @@ Lists and checkboxes; live details; headings; sums; tables; diagrams.
 1. Offers by margin marker (above), or accepted at once and undone by a
    scrub.
 2. Whether right-to-left writing is in the first version (lists and
-   checkboxes mirrored; `docs/recognition/arabic.md`).
+   checkboxes mirrored).
