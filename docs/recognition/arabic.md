@@ -325,9 +325,11 @@ shipped, and the route: `docs/packages/system-patches.md`.
 
 ## Next
 
-0. The installable package (`docs/packages/system-patches.md`): the patch
-   image builder and its check, the ARM build of `qd/ArabicText.cpp` and
-   the paragraph changes, the installer part, a run on Einstein.
+0. The installable package (`docs/packages/system-patches.md`; Apple's
+   717260 read, its installer `PatchMunger` understood): the patch image
+   builder over 717260's streams and its check, the ARM build of
+   `qd/ArabicText.cpp` and the paragraph changes, the installer parts, a
+   run on Einstein.
 1. Better models: the dots bound to their letters (a position-aware
    alignment, or the low level's placement extended to marks below the
    line), more alignment rounds and variants, and a floor on a variant's
