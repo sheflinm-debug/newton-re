@@ -1,0 +1,505 @@
+// The Gallery and the Camera (docs/modern/camera-gallery.md).  Compiled into
+// newton (HostGallerySource.cpp, made by src/cmake/EmbedText.cmake) and
+// evaluated at boot by HostInstallGallery (host/HostPictures.cpp); the frame
+// is kept in the global HostGallery:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureGallery - the Host
+// panel's "Camera and Gallery", NEWTON_GALLERY): the ROM has no camera and
+// no application for pictures.  With this on:
+//
+// The Gallery (Extras) is a view of the Files soup (host/HostFiles.ns): every
+// entry whose file is a picture this host decodes (JPEG, PNG), wherever it
+// is.  Albums are folders - an entry's `path` - so the albums are the real
+// folder tree, not the Newton's one-level filing.  It shows the albums, an
+// album's pictures as a grid of thumbnails, and a picture filling the view
+// (a tap on its left or right third goes to the one before or after; the
+// title line goes back).  A thumbnail is decoded once and kept in the
+// entry (`thumb`, with `thumbOf` the file's modification time it was made
+// from); a full view is decoded at the view's size and thrown away.  The
+// pictures are drawn in the screen's grays (four bits), decoded by the host
+// (hal/host/HostImage.h); the file is never changed.
+//
+// The Camera (Extras, only when the host has a camera - hal/host/
+// HostCamera.h; so far the fake one of NEWTON_CAMERA): what the camera sees,
+// refreshed every second; the shutter makes a file in Pictures/Camera
+// (IMG_<date>_<time>.jpg, the camera's bytes as they are), brought into the
+// Files soup at once; the last picture's thumbnail opens it in the Gallery.
+//
+// NOT YET (camera-gallery.md): writing on a picture, routing and filing
+// (the Action and filing buttons), the 'photo data type (RegDataDef), a
+// picture put into a note, new/rename/move/delete from the Gallery's own
+// pop-up, a camera's DCIM tree on a drive, a flick for next and previous,
+// the "take a picture" proto for other applications, the camera as a
+// permission; a real camera; EXIF (the time taken, orientation).
+
+{
+	appSymbol: '|Gallery:host|,
+	cameraSymbol: '|Camera:host|,
+
+	pictureKinds: ["JPEG picture", "PNG picture"],		// (HostFiles.ns's kinds this host decodes)
+	thumbSize: 56,
+	depth: 4,
+	cameraFolder: "Pictures/Camera",
+
+	// --- the pictures, from the Files soup ----------------------------
+
+	IsPicture: func(entry)
+	begin
+		if not IsString(entry.kind) then return nil;
+		foreach k in pictureKinds do
+			if StrEqual(k, entry.kind) then return true;
+		nil;
+	end,
+
+	// the pictures of a folder (nil: all of them), by name
+	Pictures: func(path)
+	begin
+		local out := [];
+		local soup := GetUnionSoup("Files");
+		if not soup then return out;
+		local cursor := soup:Query({});
+		local e := cursor:Entry();
+		while e do begin
+			if :IsPicture(e) and (not path or StrEqual(e.path, path)) then AddArraySlot(out, e);
+			e := cursor:Next();
+		end;
+		Sort(out, '|str<|, 'name);
+	end,
+
+	// the albums: [{path, count, first}], by path
+	Albums: func()
+	begin
+		local albums := [];
+		foreach e in :Pictures(nil) do begin
+			local album := nil;
+			foreach a in albums do
+				if not album and StrEqual(a.path, e.path) then album := a;
+			if album then album.count := album.count + 1
+			else AddArraySlot(albums, {path: e.path, count: 1, first: e});
+		end;
+		Sort(albums, '|str<|, 'path);
+	end,
+
+	AlbumName: func(path)
+		if StrLen(path) = 0 then "Newton Files" else path,
+
+	// a picture's thumbnail, made once (nil: it could not be read)
+	Thumb: func(entry)
+	begin
+		if entry.thumbOf = entry.modified then return entry.thumb;
+		local b := HostPictureBitmap(entry.disk, thumbSize, thumbSize, depth);
+		entry.thumb := b;
+		entry.thumbOf := entry.modified;
+		// (no notification: nobody else needs to know of a thumbnail)
+		EntryChange(entry);
+		b;
+	end,
+
+	DrawBitmapAt: func(view, bitmap, x, y)
+		if bitmap then view:DrawShape(bitmap, {transform: [x, y]}),
+
+	// --- the Gallery --------------------------------------------------
+
+	gallery: {
+		viewClass: 74,							// clView
+		viewFlags: 517,							// vVisible, vApplication, vClickable
+		viewFormat: 273,
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		declareSelf: 'base,
+		viewFont: 10240,
+		appSymbol: '|Gallery:host|,
+		title: "Gallery",
+		ReOrientToScreen: func() :Relayout(),
+
+		kBold: 1058816,
+		kSmall: 9216,
+
+		mode: 'albums,							// 'albums, 'grid or 'picture
+		albums: nil,
+		album: nil,								// the folder shown
+		pictures: nil,							// its pictures
+		index: 0,								// the picture shown
+		shown: nil,								// its bitmap (thrown away when left)
+		scroll: 0,								// rows scrolled past
+
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight);
+		end,
+
+		viewSetupDoneScript: func()
+		begin
+			if mode = 'albums then :ShowAlbums();
+		end,
+
+		viewQuitScript: func()
+		begin
+			shown := nil;
+			albums := nil;
+			pictures := nil;
+			mode := 'albums;
+		end,
+
+		Relayout: func()
+		begin
+			local p := GetAppParams();
+			SetValue(self, 'viewBounds, RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight));
+			shown := nil;
+			:Dirty();
+		end,
+
+		Gallery: func() GetGlobalVar('|HostGallery:host|),
+
+		HeaderHeight: func() FontHeight(kBold) + 10,
+
+		ShowAlbums: func()
+		begin
+			mode := 'albums;
+			albums := :Gallery():Albums();
+			shown := nil;
+			scroll := 0;
+			:Dirty();
+		end,
+
+		ShowAlbum: func(path)
+		begin
+			mode := 'grid;
+			album := path;
+			pictures := :Gallery():Pictures(path);
+			shown := nil;
+			scroll := 0;
+			:Dirty();
+		end,
+
+		ShowPicture: func(i)
+		begin
+			if not pictures or Length(pictures) = 0 then return :ShowAlbums();
+			index := Max(0, Min(i, Length(pictures) - 1));
+			mode := 'picture;
+			local b := :LocalBox();
+			shown := HostPictureBitmap(pictures[index].disk, b.right - 4, b.bottom - :HeaderHeight() - 4, :Gallery().depth);
+			:Dirty();
+		end,
+
+		// a picture of the Files soup shown (from Files, Find or the Camera)
+		ShowEntry: func(entry)
+		begin
+			if not viewCObject then :Open();
+			:ShowAlbum(entry.path);
+			foreach i, e in pictures do
+				if StrEqual(e.disk, entry.disk) then return :ShowPicture(i);
+		end,
+
+		Back: func()
+		begin
+			if mode = 'picture then :ShowAlbum(album)
+			else if mode = 'grid then :ShowAlbums()
+			else :Close();
+		end,
+
+		// the grid's cells across
+		Columns: func() Max(1, ((:LocalBox()).right - 4) div (:Gallery().thumbSize + 8)),
+
+		viewDrawScript: func()
+		begin
+			local g := :Gallery();
+			local b := :LocalBox();
+			local w := b.right;
+			local hh := :HeaderHeight();
+			local bh := FontHeight(kBold);
+			local heading := if mode = 'albums then "Gallery"
+				else if mode = 'grid then "< " & g:AlbumName(album)
+				else "< " & pictures[index].name & "  (" & (index + 1) & " of " & Length(pictures) & ")";
+			:DrawShape(MakeText(StyledStrTruncate(heading, w - 60, kBold), 6, 4, w - 54, 4 + bh), {font: kBold});
+			local cw := StrFontWidth("Close", kBold);
+			:DrawShape(MakeRoundRect(w - cw - 12, 2, w - 3, 4 + bh + 2, 4), {penSize: 1});
+			:DrawShape(MakeText("Close", w - cw - 7, 4, w - 4, 4 + bh), {font: kBold});
+			:DrawShape(MakeLine(0, hh - 1, w, hh - 1), {penSize: 1});
+			if mode = 'albums then begin
+				if not albums or Length(albums) = 0 then
+					return :DrawShape(MakeText("No pictures yet. Pictures put in the Files folder appear here.", 10, hh + 10, w - 10, hh + 60), {font: kSmall});
+				local rowH := g.thumbSize + 8;
+				local y := hh;
+				for i := scroll to Length(albums) - 1 do begin
+					if y < b.bottom then begin
+						local a := albums[i];
+						local t := g:Thumb(a.first);
+						if t then begin
+							local tb := ShapeBounds(t);
+							g:DrawBitmapAt(self, t, 6 + (g.thumbSize - tb.right) div 2, y + 4 + (g.thumbSize - tb.bottom) div 2);
+						end;
+						:DrawShape(MakeText(StyledStrTruncate(g:AlbumName(a.path), w - g.thumbSize - 20, kBold), g.thumbSize + 14, y + 10, w - 4, y + 10 + bh), {font: kBold});
+						:DrawShape(MakeText(a.count & (if a.count = 1 then " picture" else " pictures"), g.thumbSize + 14, y + 14 + bh, w - 4, y + rowH - 4), {font: kSmall});
+						:DrawShape(MakeLine(4, y + rowH - 1, w - 4, y + rowH - 1), {penSize: 1, penPattern: 3});
+					end;
+					y := y + rowH;
+				end;
+			end
+			else if mode = 'grid then begin
+				local cell := g.thumbSize + 8;
+				local cols := :Columns();
+				local left := (w - cols * cell) div 2;
+				for i := scroll * cols to Length(pictures) - 1 do begin
+					local row := i div cols - scroll;
+					local y := hh + 4 + row * cell;
+					if y < b.bottom then begin
+						local x := left + (i mod cols) * cell;
+						local t := g:Thumb(pictures[i]);
+						if t then begin
+							local tb := ShapeBounds(t);
+							g:DrawBitmapAt(self, t, x + 4 + (g.thumbSize - tb.right) div 2, y + 4 + (g.thumbSize - tb.bottom) div 2);
+						end else
+							:DrawShape(MakeRect(x + 4, y + 4, x + 4 + g.thumbSize, y + 4 + g.thumbSize), {penSize: 1, penPattern: 3});
+					end;
+				end;
+			end
+			else if shown then begin
+				local sb := ShapeBounds(shown);
+				g:DrawBitmapAt(self, shown, (w - sb.right) div 2, hh + (b.bottom - hh - sb.bottom) div 2);
+			end else
+				:DrawShape(MakeText("This picture cannot be shown.", 10, hh + 20, w - 10, hh + 40), {font: kSmall});
+		end,
+
+		viewClickScript: func(unit)
+		begin
+			local g := :Gallery();
+			local box := :GlobalBox();
+			local x := GetPoint(4, unit) - box.left;
+			local y := GetPoint(5, unit) - box.top;
+			local w := box.right - box.left;
+			local hh := :HeaderHeight();
+			if y < hh then begin
+				if x > w - StrFontWidth("Close", kBold) - 14 then :Close() else :Back();
+				return true;
+			end;
+			if mode = 'albums then begin
+				if not albums then return true;
+				local i := scroll + (y - hh) div (g.thumbSize + 8);
+				if i < Length(albums) then :ShowAlbum(albums[i].path)
+				else if scroll > 0 then begin scroll := 0; :Dirty(); end;
+			end
+			else if mode = 'grid then begin
+				local cell := g.thumbSize + 8;
+				local cols := :Columns();
+				local left := (w - cols * cell) div 2;
+				local col := (x - left) div cell;
+				local i := (scroll + (y - hh - 4) div cell) * cols + col;
+				if col >= 0 and col < cols and i < Length(pictures) then :ShowPicture(i)
+				else begin
+					// below the last row: the next rows, or back to the top
+					local rows := Max(1, (box.bottom - box.top - hh) div cell);
+					scroll := if (scroll + rows) * cols < Length(pictures) then scroll + rows else 0;
+					:Dirty();
+				end;
+			end
+			else begin
+				if x < w div 3 then :ShowPicture(if index > 0 then index - 1 else Length(pictures) - 1)
+				else if x > w - w div 3 then :ShowPicture(if index < Length(pictures) - 1 then index + 1 else 0);
+			end;
+			true;
+		end
+	},
+
+	// --- the Camera ---------------------------------------------------
+
+	camera: {
+		viewClass: 74,
+		viewFlags: 517,							// vVisible, vApplication, vClickable
+		viewFormat: 273,
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		declareSelf: 'base,
+		viewFont: 10240,
+		appSymbol: '|Camera:host|,
+		title: "Camera",
+		ReOrientToScreen: func() :Relayout(),
+
+		kBold: 1058816,
+		kSmall: 9216,
+		kBar: 64,								// the shutter's bar at the bottom
+
+		preview: nil,
+		lastTaken: nil,							// the path of the last picture taken
+		lastThumb: nil,
+
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight);
+		end,
+
+		viewSetupDoneScript: func()
+		begin
+			:Refresh();
+			:SetupIdle(1000);
+		end,
+
+		viewIdleScript: func()
+		begin
+			:Refresh();
+			1000;								// (a frame a second: e-paper and the fake camera need no more)
+		end,
+
+		viewQuitScript: func()
+		begin
+			preview := nil;
+		end,
+
+		Relayout: func()
+		begin
+			local p := GetAppParams();
+			SetValue(self, 'viewBounds, RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight));
+			:Refresh();
+		end,
+
+		Gallery: func() GetGlobalVar('|HostGallery:host|),
+
+		Refresh: func()
+		begin
+			local b := :LocalBox();
+			preview := HostCameraPreview(b.right - 8, b.bottom - kBar - FontHeight(kBold) - 14, :Gallery().depth);
+			:Dirty();
+		end,
+
+		// the shutter: a picture into Pictures/Camera, an entry at once
+		Take: func()
+		begin
+			local g := :Gallery();
+			local name := HostCameraTake(g.cameraFolder);
+			if not name then return nil;
+			lastTaken := g.cameraFolder & "/" & name;
+			Print("camera: took " & lastTaken);
+			local files := GetGlobalVar('|HostFiles:host|);
+			if files then files:Sync();
+			lastThumb := HostPictureBitmap(lastTaken, kBar - 12, kBar - 12, g.depth);
+			:Refresh();
+			lastTaken;
+		end,
+
+		ShutterBox: func()
+		begin
+			local b := :LocalBox();
+			local cx := b.right div 2;
+			local cy := b.bottom - kBar div 2;
+			{left: cx - 22, top: cy - 22, right: cx + 22, bottom: cy + 22};
+		end,
+
+		viewDrawScript: func()
+		begin
+			local g := :Gallery();
+			local b := :LocalBox();
+			local w := b.right;
+			local bh := FontHeight(kBold);
+			:DrawShape(MakeText("Camera", 6, 4, w div 2, 4 + bh), {font: kBold});
+			local cw := StrFontWidth("Close", kBold);
+			:DrawShape(MakeRoundRect(w - cw - 12, 2, w - 3, 4 + bh + 2, 4), {penSize: 1});
+			:DrawShape(MakeText("Close", w - cw - 7, 4, w - 4, 4 + bh), {font: kBold});
+			local top := bh + 10;
+			local bottom := b.bottom - kBar;
+			if preview then begin
+				local pb := ShapeBounds(preview);
+				g:DrawBitmapAt(self, preview, (w - pb.right) div 2, top + (bottom - top - pb.bottom) div 2);
+			end else
+				:DrawShape(MakeText("The camera shows nothing.", 10, top + 20, w - 10, top + 40), {font: kSmall});
+			:DrawShape(MakeLine(0, bottom, w, bottom), {penSize: 1});
+			local s := :ShutterBox();
+			:DrawShape(MakeOval(s.left, s.top, s.right, s.bottom), {penSize: 2});
+			:DrawShape(MakeOval(s.left + 6, s.top + 6, s.right - 6, s.bottom - 6), {penSize: 1, fillPattern: 4});
+			if lastThumb then
+				g:DrawBitmapAt(self, lastThumb, 8, bottom + 6);
+		end,
+
+		viewClickScript: func(unit)
+		begin
+			local box := :GlobalBox();
+			local x := GetPoint(4, unit) - box.left;
+			local y := GetPoint(5, unit) - box.top;
+			local w := box.right - box.left;
+			if y < FontHeight(kBold) + 10 then begin
+				if x > w - StrFontWidth("Close", kBold) - 14 then :Close();
+				return true;
+			end;
+			local s := :ShutterBox();
+			if x >= s.left and x <= s.right and y >= s.top and y <= s.bottom then
+				:Take()
+			else if lastTaken and y > box.bottom - box.top - kBar and x < kBar then begin
+				// the last picture, in the Gallery
+				local g := :Gallery();
+				local base := GetRoot().(g.appSymbol);
+				foreach e in g:Pictures(g.cameraFolder) do
+					if StrEqual(e.disk, lastTaken) and base then base:ShowEntry(e);
+			end;
+			true;
+		end
+	},
+
+	// --- installing ---------------------------------------------------
+
+	MakeIcon: func(which)
+	begin
+		local bitmap := MakeBitmap(28, 26, nil);
+		if which = 'camera then begin
+			DrawIntoBitmap(MakeRoundRect(2, 7, 26, 23, 3), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeRect(9, 3, 17, 7), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeOval(9, 10, 19, 20), {penSize: 2}, bitmap);
+		end else begin
+			DrawIntoBitmap(MakeRect(2, 3, 26, 23), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeOval(17, 6, 22, 11), {penSize: 1, fillPattern: 4}, bitmap);
+			DrawIntoBitmap(MakeLine(4, 21, 11, 11), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeLine(11, 11, 16, 17), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeLine(16, 17, 19, 14), {penSize: 2}, bitmap);
+			DrawIntoBitmap(MakeLine(19, 14, 24, 21), {penSize: 2}, bitmap);
+		end;
+		bitmap;
+	end,
+
+	IconEntry: func(sym)
+	begin
+		local extras := GetUnionSoup(@307.name);
+		if not extras then return nil;
+		local cursor := Query(extras, {type: 'index});
+		local e;
+		while (e := cursor:Entry()) do begin
+			if e.app = sym then return e;
+			cursor:Next();
+		end;
+		nil;
+	end,
+
+	Install: func(sym, template, text, which, sequence)
+	begin
+		if not GetRoot().(sym) then
+			GetRoot().(sym) := BuildContext(template);
+		if not :IconEntry(sym) then begin
+			local extras := GetUnionSoup(@307.name);
+			if extras then
+				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: text, app: sym,
+					icon: :MakeIcon(which), labels: nil, sequence: sequence, _tagList: ['_icon, '_noBackup]}, nil);
+		end;
+	end,
+
+	Remove: func(sym)
+	begin
+		local e := :IconEntry(sym);
+		if e then EntryRemoveFromSoupXmit(e, nil);
+		local base := GetRoot().(sym);
+		if base and base.viewCObject then base:Close();
+	end,
+
+	Start: func()
+	begin
+		if not HostFeatureOn('gallery) then
+			return :Stop();
+		:Install(appSymbol, gallery, "Gallery", 'gallery, 34);
+		if HostCameraName() then
+			:Install(cameraSymbol, camera, "Camera", 'camera, 35)
+		else
+			:Remove(cameraSymbol);
+	end,
+
+	Stop: func()
+	begin
+		:Remove(appSymbol);
+		:Remove(cameraSymbol);
+	end
+}

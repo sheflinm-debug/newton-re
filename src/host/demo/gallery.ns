@@ -1,0 +1,139 @@
+// The Camera and the Gallery (docs/modern/camera-gallery.md; host/HostGallery.ns,
+// host/HostPictures.cpp, hal/host/HostImage.h, hal/host/HostCamera.h).
+// With NEWTON_GALLERY=1 (and Files off: the Gallery keeps the Files soup
+// itself), NEWTON_CAMERA the fake camera's folder (src/host/demo/camera) and
+// NEWTON_FILES_ROOT a folder of the build's: the Camera shows what the camera
+// sees; the shutter, tapped twice, makes two files in Pictures/Camera - the
+// camera's bytes as they are - and entries of the Files soup; the last
+// picture's thumbnail opens it in the Gallery; one picture moved into
+// Pictures/Trips makes a second album; the albums, an album's grid of
+// thumbnails (kept in the entries) and a picture filling the view are shown.
+// Without it there is neither application (ctests host.NewtonGallery and
+// ...off).
+//
+//   NEWTON_GALLERY=1 NEWTON_CAMERA=src/host/demo/camera NEWTON_FILES_ROOT=build/gallery-demo
+//       build/host/host/newton --display 320x480 --headless 120 --script src/host/demo/gallery.ns
+//
+// Leaves build/gallery-camera.pgm, -albums.pgm, -grid.pgm and -picture.pgm.
+
+HostInclude("common.ns");			// waitFor, walkSetup, tapAt
+
+glName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+glYesNo := func(x) if x then "true" else "nil";
+
+// the Files soup's entry of a file (nil: none)
+glEntry := func(disk)
+  begin
+    local found := nil;
+    local soup := GetUnionSoup("Files");
+    if soup then
+      begin
+        local cursor := soup:Query({});
+        local e := cursor:Entry();
+        while e do
+          begin
+            if IsString(e.disk) and StrEqual(e.disk, disk) then found := e;
+            e := cursor:Next();
+          end;
+      end;
+    found;
+  end;
+
+glTapIn := func(view, x, y)
+  begin
+    local box := view:GlobalBox();
+    call tapAt with (box.left + x, box.top + y);
+  end;
+
+glTaken := [];
+
+glShutter := func(camera, andThen)
+  begin
+    local was := camera.lastTaken;
+    local s := camera:ShutterBox();
+    call glTapIn with (camera, (s.left + s.right) div 2, (s.top + s.bottom) div 2);
+    call waitFor with ("gallery: the picture taken", func() camera.lastTaken and not (was and StrEqual(was, camera.lastTaken))
+        and call glEntry with (camera.lastTaken), func() begin
+        local e := call glEntry with (camera.lastTaken);
+        local info := HostPictureInfo(camera.lastTaken);
+        AddArraySlot(glTaken, camera.lastTaken);
+        Print("gallery: took a picture into " & e.path & ", " & e.kind & ", " & e.size & " bytes, "
+          & info.width & " x " & info.height);
+        call andThen with ();
+      end, 20);
+  end;
+
+glAfterCamera := func()
+  begin
+    local camera := GetRoot().|Camera:host|;
+    local gallery := GetRoot().|Gallery:host|;
+    // the last picture's thumbnail: the Gallery, showing it
+    call glTapIn with (camera, 20, (camera:LocalBox()).bottom - 30);
+    call waitFor with ("gallery: the last picture shown", func() gallery.viewCObject and gallery.mode = 'picture, func() begin
+        Print("gallery: the Camera's last picture shown, " & (gallery.index + 1) & " of " & Length(gallery.pictures)
+          & " in " & gallery.album & ", the one taken " & call glYesNo with (StrEqual(gallery.pictures[gallery.index].disk, glTaken[1]))
+          & ", a bitmap " & ShapeBounds(gallery.shown).right & " x " & ShapeBounds(gallery.shown).bottom);
+        AddDelayedCall(func() begin
+            ScreenSnapshot("build/gallery-picture.pgm");
+            if camera.viewCObject then camera:Close();
+            // an album is a folder: the second picture moved into one
+            Print("gallery: moved into Pictures/Trips " & call glYesNo with (HostFilesMove(glTaken[1], "Pictures/Trips/Jordan.jpg")));
+            call waitFor with ("gallery: the album", func() call glEntry with ("Pictures/Trips/Jordan.jpg"), func() begin
+                gallery:ShowAlbums();
+                local names := "";
+                foreach i, a in gallery.albums do
+                  names := names & (if i > 0 then ", " else "") & a.path & " (" & a.count & ")";
+                Print("gallery: the albums " & names);
+                AddDelayedCall(func() begin
+                    ScreenSnapshot("build/gallery-albums.pgm");
+                    // the first album's row: its grid
+                    call glTapIn with (gallery, 100, gallery:HeaderHeight() + 20);
+                    call waitFor with ("gallery: the grid", func() gallery.mode = 'grid, func() begin
+                        AddDelayedCall(func() begin
+                            local e := gallery.pictures[0];
+                            Print("gallery: " & gallery.album & " holds " & Length(gallery.pictures) & ", its thumbnail kept in the entry "
+                              & call glYesNo with ((call glEntry with (e.disk)).thumb) & ", "
+                              & ShapeBounds(e.thumb).right & " x " & ShapeBounds(e.thumb).bottom);
+                            ScreenSnapshot("build/gallery-grid.pgm");
+                            local cell := GetGlobalVar('|HostGallery:host|).thumbSize + 8;
+                            local left := ((gallery:LocalBox()).right - gallery:Columns() * cell) div 2;
+                            call glTapIn with (gallery, left + cell div 2, gallery:HeaderHeight() + 4 + cell div 2);
+                            call waitFor with ("gallery: the picture", func() gallery.mode = 'picture and gallery.shown, func() begin
+                                Print("gallery: " & gallery.pictures[gallery.index].name & " fills the view, "
+                                  & ShapeBounds(gallery.shown).right & " x " & ShapeBounds(gallery.shown).bottom);
+                                AddDelayedCall(func() begin
+                                    ScreenSnapshot("build/gallery-picture2.pgm");
+                                    Print("gallery: done");
+                                    HostQuit();
+                                  end, nil, 500);
+                              end, 20);
+                          end, nil, 1000);
+                      end, 20);
+                  end, nil, 1000);
+              end, 20);
+          end, nil, 1000);
+      end, 20);
+  end;
+
+call walkSetup with (glName, func() begin
+    local on := HostFeatureOn('gallery);
+    Print("gallery: HostFeatureOn " & call glYesNo with (on) & ", the Gallery " & call glYesNo with (GetRoot().|Gallery:host|)
+      & ", the Camera " & call glYesNo with (GetRoot().|Camera:host|) & ", " & (if HostCameraName() then HostCameraName() else "no camera"));
+    if not on then
+      begin
+        Print("gallery: done");
+        return HostQuit();
+      end;
+    Print("gallery: the Files application's icon " & call glYesNo with (GetGlobalVar('|HostFiles:host|):IconEntry()));
+    HostFilesRoot();
+    local camera := GetRoot().|Camera:host|;
+    camera:Open();
+    call waitFor with ("gallery: the preview", func() camera.viewCObject and camera.preview, func() begin
+        Print("gallery: the Camera's preview " & ShapeBounds(camera.preview).right & " x " & ShapeBounds(camera.preview).bottom);
+        AddDelayedCall(func() begin
+            ScreenSnapshot("build/gallery-camera.pgm");
+            call glShutter with (camera, func() call glShutter with (camera, func() AddDelayedCall(glAfterCamera, nil, 500)));
+          end, nil, 1500);
+      end, 20);
+  end);

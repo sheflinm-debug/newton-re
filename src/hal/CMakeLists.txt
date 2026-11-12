@@ -86,6 +86,18 @@ if(Threads_FOUND)
     target_link_libraries(hal_host_gps PUBLIC Threads::Threads)
 endif()
 
+# Pictures decoded on the host (host/HostImage.h; docs/modern/camera-gallery.md):
+# PNG and baseline JPEG by a decoder of our own, and pictures made Newton
+# grays - for the Gallery and the Camera; and the host's camera
+# (host/HostCamera.h: so far the fake one, a folder of pictures).  No
+# Newton headers.
+add_library(hal_host_image STATIC
+    host/HostImage.cpp
+    host/HostCamera.cpp
+)
+target_link_libraries(hal_host_image PUBLIC newton_config)
+target_include_directories(hal_host_image PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/host)
+
 # The LoRa mesh engine (host/HostMesh.h): a MeshCore chat node
 # (thirdparty/meshcore) on the radio the host gives it - a board's SX1262,
 # or a desktop's pretend one whose air is a UDP multicast group

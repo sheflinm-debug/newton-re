@@ -12,6 +12,13 @@ add_test(NAME hal.GPS COMMAND test_HostGPS)
 add_test(NAME hal.GPSReplay COMMAND test_HostGPS replay WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(hal.GPS hal.GPSReplay PROPERTIES TIMEOUT 60 PASS_REGULAR_EXPRESSION "all passed")
 
+# the host's picture decoder (host/HostImage.h) against Pillow's decoding of
+# the same pictures (pictures/, made by tools/host/picturefixtures.py)
+add_executable(test_HostImage test_HostImage.cpp)
+target_link_libraries(test_HostImage PRIVATE hal_host_image)
+add_test(NAME hal.HostImage COMMAND test_HostImage ${CMAKE_CURRENT_SOURCE_DIR}/pictures)
+set_tests_properties(hal.HostImage PROPERTIES TIMEOUT 60 PASS_REGULAR_EXPRESSION "all passed")
+
 add_executable(test_HostSerialChip test_HostSerialChip.cpp)
 target_link_libraries(test_HostSerialChip PRIVATE hal_host_serial os600_kernel os600_user)
 add_test(NAME hal.HostSerialChip COMMAND test_HostSerialChip)

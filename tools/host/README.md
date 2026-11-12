@@ -602,3 +602,19 @@ found two of the bugs below.  What it found is in `docs/host-lp64.md`,
 - **Output:** newton's output passed through, and `fakemodel: offered the tasks: ...` (the task words the request's
   instructions list), `fakemodel: asked "SENTENCE" -> "COMMAND"`; exits with newton's status.
 - **Used by:** ctests `host.NewtonAssistModel` and `.off` (`src/host/demo/assist-model.ns`).
+
+## picturefixtures.py - the pictures the decoder and the fake camera are tested with
+
+    python tools/host/picturefixtures.py [--root <checkout>]
+
+- **Purpose:** the host decodes PNG and JPEG itself (`src/hal/host/HostImage.cpp`, `docs/modern/camera-gallery.md`).
+  Its ctest `hal.HostImage` compares its decoding of small pictures in every form it reads with Pillow's decoding of
+  the same files - an independent decoder as the oracle. The fake camera (`src/hal/host/HostCamera.cpp`) takes its
+  pictures from a folder of test photographs.
+- **How:** draws a picture (gradients, edges, colours; nothing is downloaded) and saves it with Pillow as PNG (RGB,
+  RGBA, 8-, 1- and 16-bit gray, a 4-bit palette, a palette with transparency) and JPEG (4:2:0, 4:2:2, 4:4:4, gray,
+  restart markers, progressive); writes an interlaced (Adam7) PNG itself, Pillow writing none; and saves Pillow's
+  decoding of each as a `.ppm`, transparency over white (none for the progressive JPEG, which the decoder must refuse).
+  Pillow is needed only to run it: its outputs are committed.
+- **Output:** `src/hal/tests/pictures/*.png|jpg|ppm`, `src/host/demo/camera/test-1..3.jpg`.
+- **Used by:** ctests `hal.HostImage`, `host.NewtonGallery`.

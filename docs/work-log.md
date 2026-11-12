@@ -9,6 +9,20 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - the Gallery and the Camera
+
+On branch `modern`, behind the Host panel's "Camera and Gallery"
+(`NEWTON_GALLERY`): a PNG and baseline JPEG decoder written for the project
+(`hal/host/HostImage.cpp`; every PNG identical to Pillow's decoding, every
+JPEG within 3 levels, ctest `hal.HostImage`); the fake camera
+(`hal/host/HostCamera.cpp`, `NEWTON_CAMERA`); the Gallery, a view of the
+Files soup's pictures with albums as folders and thumbnails kept in the
+entries, and the Camera, whose shutter writes into `Pictures/Camera`
+(`src/host/HostGallery.ns`, `HostPictures.cpp`). Found on the way: a
+`clView` needs `vClickable` for its `viewClickScript`; a bitmap's `bounds`
+is a binary (`ShapeBounds` gives the frame); nearest-sample chroma differs
+from libjpeg's by a mean of 5 levels, centred bilinear by 0.3.
+
 ## 2026-11-12: Modern additions - files as entries, found by Find
 
 On branch `modern`, with "Files" on: every file under the folder is an

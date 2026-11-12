@@ -159,7 +159,9 @@
 				status := nil;
 				:Close();
 				files:OpenAsNote(path, item.name, kind);
-			end else begin
+			end else if files:ShowInGallery(path) then
+				status := nil
+			else begin
 				status := (if kind then kind else "This kind of file") & ": no viewer yet";
 				listView:Dirty();
 			end;
@@ -538,6 +540,7 @@
 			if base and base.viewCObject then base:Close();
 			return :OpenAsNote(entry.disk, entry.name, kind);
 		end;
+		if :ShowInGallery(entry.disk) then return entry;
 		if not base then return nil;
 		base:Open();
 		base:Show(entry.path);
@@ -546,10 +549,34 @@
 		entry;
 	end,
 
-	// the folder looked at every few seconds while Files is on
+	// a picture shown in the Gallery (host/HostGallery.ns), when it is
+	// installed and the picture is one it shows ==> true
+	ShowInGallery: func(disk)
+	begin
+		local gallery := GetGlobalVar('|HostGallery:host|);
+		local base := GetRoot().|Gallery:host|;
+		if not gallery or not base or not HostFeatureOn('gallery) then return nil;
+		local soup := GetUnionSoup(soupName);
+		if not soup then return nil;
+		local cursor := soup:Query({});
+		local e := cursor:Entry();
+		while e do begin
+			if IsString(e.disk) and StrEqual(e.disk, disk) and gallery:IsPicture(e) then begin
+				base:ShowEntry(e);
+				return true;
+			end;
+			e := cursor:Next();
+		end;
+		nil;
+	end,
+
+	// the soup is kept while Files or the Gallery (a view of it) is on
+	Wanted: func() HostFeatureOn('files) or HostFeatureOn('gallery),
+
+	// the folder looked at every few seconds while it is wanted
 	Watch: func(gen)
 	begin
-		if gen <> generation or not HostFeatureOn('files) then return;
+		if gen <> generation or not :Wanted() then return;
 		try :Sync() onexception |evt.ex| do
 			Print("files: the Files soup could not be brought into step");
 		local me := self;
@@ -558,7 +585,7 @@
 
 	Start: func()
 	begin
-		if not HostFeatureOn('files) then
+		if not :Wanted() then
 			return :Stop();
 		if not GetRoot().(appSymbol) then
 			GetRoot().(appSymbol) := BuildContext(app);
@@ -571,7 +598,13 @@
 		local gen := generation;
 		// (later: a soup made while the system is starting is refused)
 		AddDelayedCall(func() me:Watch(gen), nil, 2000);
-		if not :IconEntry() then begin
+		// (the application itself only with Files on: the Gallery alone
+		// keeps the soup and Find, not the icon)
+		if not HostFeatureOn('files) then begin
+			local e := :IconEntry();
+			if e then EntryRemoveFromSoupXmit(e, nil);
+		end
+		else if not :IconEntry() then begin
 			local extras := GetUnionSoup(@307.name);
 			if extras then
 				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Files", app: appSymbol,

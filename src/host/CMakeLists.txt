@@ -183,6 +183,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostFiles.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostGallery.ns, the Gallery and the Camera (docs/modern/camera-gallery.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostGallery.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp -DNAME=gHostGallerySource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostGallery.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -214,8 +222,9 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                ${CMAKE_CURRENT_BINARY_DIR}/HostPermissionsSource.cpp
                HostAssist.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
                HostFiles.cpp HostFilesOS.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp
+               HostPictures.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
-target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial)
+target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial hal_host_image)
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
 install(TARGETS newton DESTINATION bin)
 
@@ -1517,6 +1526,30 @@ foreach(state 1 0)
   set_tests_properties(${name}.clean PROPERTIES FIXTURES_SETUP files_clean_${state})
   set_tests_properties(${name} PROPERTIES TIMEOUT 180 FIXTURES_REQUIRED files_clean_${state}
                        ENVIRONMENT "NEWTON_FILES=${state};NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/files-test-${state}"
+                       PASS_REGULAR_EXPRESSION "${pass}"
+                       FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+endforeach()
+
+# the Camera and the Gallery (docs/modern/camera-gallery.md; host/HostGallery.ns):
+# the fake camera's pictures (demo/camera, made by tools/host/picturefixtures.py)
+# taken into a folder of the build's, emptied first; Files itself off - the
+# Gallery keeps the Files soup on its own
+foreach(state 1 0)
+  if(state)
+    set(name host.NewtonGallery)
+    set(pass "HostFeatureOn true, the Gallery true, the Camera true, Fake camera.*the Files application's icon nil.*the Camera's preview 312 x 234.*took a picture into Pictures/Camera, JPEG picture, 42924 bytes, 640 x 480.*took a picture into Pictures/Camera, JPEG picture, 42870 bytes, 480 x 640.*the Camera's last picture shown, 2 of 2 in Pictures/Camera, the one taken true.*moved into Pictures/Trips true.*the albums Pictures/Camera .1., Pictures/Trips .1..*Pictures/Camera holds 1, its thumbnail kept in the entry true, 56 x 42.*fills the view, 316 x 237.*gallery: done")
+  else()
+    set(name host.NewtonGallery.off)
+    set(pass "HostFeatureOn nil, the Gallery nil, the Camera nil.*gallery: done")
+  endif()
+  add_test(NAME ${name}.clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/gallery-test-${state})
+  set_tests_properties(${name}.clean PROPERTIES FIXTURES_SETUP gallery_clean_${state})
+  add_test(NAME ${name} COMMAND newton --display 320x480 --headless 120
+           --store ${CMAKE_BINARY_DIR}/gallery-${state}.store --erase
+           --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/gallery.ns
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+  set_tests_properties(${name} PROPERTIES TIMEOUT 180 FIXTURES_REQUIRED gallery_clean_${state}
+                       ENVIRONMENT "NEWTON_GALLERY=${state};NEWTON_CAMERA=${CMAKE_CURRENT_SOURCE_DIR}/demo/camera;NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/gallery-test-${state}"
                        PASS_REGULAR_EXPRESSION "${pass}"
                        FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 endforeach()

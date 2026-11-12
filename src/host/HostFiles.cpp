@@ -39,6 +39,7 @@
 #include "Interpreter.h"
 #include "Compiler.h"
 #include "NewtonExceptions.h"
+#include "HostFilesPaths.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,8 +104,9 @@ UTF8Of(RefArg str)
 
 
 // The absolute path of a relative one (malloc'd), nil when it is refused.
-static char*
-FullPath(RefArg relative)
+// (HostFilesPaths.h: the Gallery's natives use it too)
+char*
+HostFilesFullPath(RefArg relative)
 {
 	if (!IsString(relative))
 		return NULL;
@@ -212,7 +214,7 @@ FHostFilesRoot(RefArg /*rcvr*/)
 static Ref
 FHostFilesList(RefArg /*rcvr*/, RefArg relative)
 {
-	char* full = FullPath(relative);
+	char* full = HostFilesFullPath(relative);
 	if (full == NULL)
 		return NILREF;
 	const int kMax = 1000;
@@ -261,7 +263,7 @@ FHostFilesList(RefArg /*rcvr*/, RefArg relative)
 static Ref
 FHostFilesReadText(RefArg /*rcvr*/, RefArg relative, RefArg maxChars)
 {
-	char* full = FullPath(relative);
+	char* full = HostFilesFullPath(relative);
 	if (full == NULL)
 		return NILREF;
 	long most = ISINT(maxChars) ? (long) RINT(maxChars) : 32000;
@@ -288,7 +290,7 @@ FHostFilesWriteText(RefArg /*rcvr*/, RefArg relative, RefArg text)
 {
 	if (!IsString(text))
 		return NILREF;
-	char* full = FullPath(relative);
+	char* full = HostFilesFullPath(relative);
 	if (full == NULL)
 		return NILREF;
 	char* data = UTF8Of(text);
@@ -303,7 +305,7 @@ FHostFilesWriteText(RefArg /*rcvr*/, RefArg relative, RefArg text)
 static Ref
 FHostFilesMakeFolder(RefArg /*rcvr*/, RefArg relative)
 {
-	char* full = FullPath(relative);
+	char* full = HostFilesFullPath(relative);
 	if (full == NULL)
 		return NILREF;
 	int err = HostFilesMakeDirs(full);
@@ -455,8 +457,8 @@ FHostFilesScan(RefArg /*rcvr*/, RefArg was)
 static Ref
 FHostFilesMove(RefArg /*rcvr*/, RefArg from, RefArg to)
 {
-	char* a = FullPath(from);
-	char* b = FullPath(to);
+	char* a = HostFilesFullPath(from);
+	char* b = HostFilesFullPath(to);
 	int err = -1;
 	if (a != NULL && b != NULL && strcmp(a, b) != 0 && strcmp(a, FilesRoot()) != 0)
 	{
@@ -482,7 +484,7 @@ FHostFilesMove(RefArg /*rcvr*/, RefArg from, RefArg to)
 static Ref
 FHostFilesExists(RefArg /*rcvr*/, RefArg relative)
 {
-	char* full = FullPath(relative);
+	char* full = HostFilesFullPath(relative);
 	if (full == NULL)
 		return NILREF;
 	int kind = HostFilesKind(full);

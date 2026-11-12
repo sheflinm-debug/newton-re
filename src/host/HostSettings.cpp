@@ -10,6 +10,7 @@
 #include "HostMarks.h"
 #if !defined(ESP_PLATFORM)
 #include "HostFiles.h"
+#include "HostPictures.h"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -347,7 +348,7 @@ FHostSettingsList(RefArg /*rcvr*/)
 		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
 	// the other modern additions (host/Features.h), each unless its
 	// variable has the say
-	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files" };
+	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery" };
 	for (int id = 0; id < kFeatureCount; id++)
 		if (!HostFeatureFromEnvironment(id))
 			AddArraySlot(list, RefVar(Item(HostFeatureSetting(id), kFeatureLabels[id], kCheck, HostFeature(id))));
@@ -446,8 +447,10 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 			if (id == kFeatureMarking || id == kFeaturePermissions)
 				HostMarksFeatureChanged();
 #if !defined(ESP_PLATFORM)		// (the T-Deck has no Files application)
-			if (id == kFeatureFiles)
-				HostFilesFeatureChanged();
+			if (id == kFeatureFiles || id == kFeatureGallery)
+				HostFilesFeatureChanged();		// (the Gallery is a view of the Files soup and starts with it)
+			if (id == kFeatureGallery)
+				HostGalleryFeatureChanged();
 #endif
 			return TRUEREF;
 		}
