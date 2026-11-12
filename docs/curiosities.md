@@ -2361,38 +2361,7 @@ and fixes it by default: `romsrc/`'s `InstallFormPart` asks the host's
 ROM's behaviour; booted with `--rom` the ROM's own function runs, bug and
 all); `tools/cards/streamedpkg.py --kind form` makes a card package that
 shows it (ctests `host.NewtonCardFormPackage` and `...romBugs`). `docs/stores/README.md`, "Card
-packages". System Update 717260 does not fix this one: none of its
-objects mentions `InstallFormPart` or `deviceNumber`.
-
-## A card the ROM does not know reads a variable that is not there
-
-When a card that is not storage goes in, `WeirdCardInserted` (a slot of
-the object at magic pointer @541, ROM 0x56b385;
-`nsfunctions.py build/MP2x00US --disasm 0x56b385`) walks the card's types.
-A type found in @271 or equal to `'comm` is handled. For any other type it
-tries the root view's child of that name:
-
-    if (l5 := GetRoot().(cardType)) then begin
-
-`cardType` is meant to be the loop variable, `l3`. Instead the code reads
-it as a variable (`find-var 'cardType`, offset 57), and no such variable
-exists. So every such card throws -48807 (undefined variable). The
-NewtonTalk list reports exactly that error for NIE network cards on a
-717006 ROM, and that installing 717260 cures it ("Einstein: New desktop
-release 2026.10.11", 2026-10-11; `docs/newtontalk-findings.md`).
-
-717260 replaces @541 with a new copy (`docs/packages/update-717260.md`,
-@541 -> 0x01c115c1). In that copy, `WeirdCardInserted` is the same
-function, except that offset 53 is `get-var 7` (l3) and `'cardType` is
-gone from its literals. Its bytecode is the 156-byte binary at offset
-0x81f8 of `System Update 2.1 (717260).pkg`, and its literals are at
-0x82ec. The reconstruction (`romsrc/functions/obj_64734d.WeirdCardInserted.ns`)
-ports the bug and fixes it by default, as 717260 does, behind
-`RomBugFixed()` (`NEWTON_ROM_BUGS=1` for the ROM's behaviour). Demo
-`src/host/demo/weird-card.ns` hands the handler a card type the ROM does
-not know: fixed, the root's child named after the type is opened; with the
-ROM's code, the call throws -48807 (ctests `host.NewtonWeirdCard` and
-`...romBugs`).
+packages".
 
 ## An o written alone is a zero until it is written over a word
 

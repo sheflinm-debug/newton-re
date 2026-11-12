@@ -68,6 +68,4 @@ unless `NEWTON_ROM_BUGS=1`, and the fix reads
 `if RomBugFixed() then <fixed> else <the ROM's code>`. Booted from the
 ROM image (`--rom`), the ROM's own functions run, unchanged. The first is
 `InstallFormPart`'s socket (`docs/curiosities.md`, "No application
-installs off a card's own package"); then `WeirdCardInserted`'s card type
-(`docs/curiosities.md`, "A card the ROM does not know reads a variable that
-is not there"; ctests `host.NewtonWeirdCard` and `...romBugs`).
+installs off a card's own package").
