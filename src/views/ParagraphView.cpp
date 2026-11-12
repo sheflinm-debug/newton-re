@@ -5215,6 +5215,138 @@ TParagraphView::HandleInsertItems(RefArg spec)
 }
 
 
+Ref	DoInsertItems(TView* view, RefArg items, Boolean addSpace, Boolean undoable,
+				  long insertOffset, long replaceChars, Boolean moveCaret,
+				  RefArg defaultFontSpec);
+
+/*------------------------------------------------------------------------------
+	S h o w n   a s   w r i t i n g   o r   a s   t e x t
+	DEVIATION (host, host/KeepInk.h; docs/modern/ink-and-text.md): not in
+	the ROM.  A word that has both its ink and its reading is one or the
+	other on the page, and this turns the words of a range over:
+
+	as writing	a run of text whose style keeps its ink, and whose
+				characters still spell the ink's reading, becomes the ink
+				word (the reading going with it);
+	as text		an ink word that carries a reading becomes the reading,
+				in the font of the text before it, its style keeping the
+				ink; one that carries none is read first (the paragraph's
+				command 0x1a, which with KeepInk on keeps the ink too).
+
+	Each word goes through the path everything put into a paragraph takes
+	(DoInsertItems), last word first so the offsets before it hold.
+	==> where the range ends now.
+------------------------------------------------------------------------------*/
+
+long
+ShowRangeAs(TParagraphView* view, long start, long stop, Boolean asInk)
+{
+	long textLength = view->TextLength();
+	if (start < 0)
+		start = 0;
+	if (stop > textLength)
+		stop = textLength;
+	if (start >= stop)
+		return stop;
+
+	RefVar styles(view->Styles());
+	if (!IsArray(styles))
+		return stop;						// one style throughout: no word keeps anything
+
+	// the runs, as they stand (the array changes under each replacement)
+	long runs = Length(styles) / 2;
+	if (runs == 0)
+		return stop;
+	RefVar runStyles(MakeArray(runs));
+	long* lengths = (long*) NewPtr(runs * (long) sizeof(long));
+	if (lengths == nil)
+		return stop;
+	for (long i = 0; i < runs; i++)
+	{
+		lengths[i] = RINT(RefVar(GetArraySlotRef(styles, i * 2)));
+		SetArraySlot(runStyles, i, RefVar(GetArraySlotRef(styles, i * 2 + 1)));
+	}
+	long end = 0;
+	for (long i = 0; i < runs; i++)
+		end += lengths[i];
+
+	Boolean unread = false;
+	for (long i = runs - 1; i >= 0; i--)
+	{
+		long length = lengths[i];
+		long offset = end - length;
+		end = offset;
+		if (offset < start || offset + length > stop || length <= 0)
+			continue;						// not wholly in the range
+		RefVar style(GetArraySlotRef(runStyles, i));
+
+		if (asInk)
+		{
+			if (!StyleKeepsInk(style))
+				continue;
+			RefVar ink(GetFrameSlot(style, RSSYMink));
+			RefVar reading(InkWordReading(ink));
+			if (ISNIL(reading)
+			 || Length(reading) / (long) sizeof(UniChar) - 1 != length)
+				continue;
+			// (the text is asked for afresh: an earlier replacement may
+			//  have moved it)
+			RefVar text(view->Text());
+			if (memcmp((const UniChar*) BinaryData(text) + offset, BinaryData(reading),
+					   length * sizeof(UniChar)) != 0)
+				continue;					// edited since: no longer what was written
+			DoInsertItems(view, ink, false, true, offset, length, false, RefVar(NILREF));
+			stop += 1 - length;
+		}
+		else
+		{
+			if (!IsInkWord(style))
+				continue;
+			// (a run of ink words is one style a word: each is a run)
+			RefVar reading(InkWordReading(style));
+			if (ISNIL(reading))
+			{
+				unread = true;
+				continue;
+			}
+			// the font of the text before it; with none, what the
+			// paragraph would write there
+			RefVar font;
+			for (long j = i - 1; j >= 0 && ISNIL(font); j--)
+				font = PlainFontFrame(RefVar(GetArraySlotRef(runStyles, j)));
+			if (ISNIL(font))
+				font = PlainFontFrame(RefVar(view->GetStyleForInsertion(offset, false, true)));
+			if (ISNIL(font))
+				continue;
+			SetFrameSlot(font, RSSYMink, style);
+			long count = Length(reading) / (long) sizeof(UniChar) - 1;
+			RefVar itemStyles(AllocateArray(RSSYMstyles, 2));
+			SetArraySlot(itemStyles, 0, RefVar(MAKEINT(count)));
+			SetArraySlot(itemStyles, 1, font);
+			RefVar item(AllocateFrame());
+			SetFrameSlot(item, RSSYMtext, reading);
+			SetFrameSlot(item, RSSYMstyles, itemStyles);
+			DoInsertItems(view, item, false, true, offset, length, false, RefVar(NILREF));
+			stop += count - length;
+		}
+	}
+	DisposPtr((Ptr) lengths);
+
+	// the ink words nobody has read yet, read now
+	if (!asInk && unread)
+	{
+		RefVar cmd(Clone(RefVar(Rprotocommand)));
+		SetFrameSlot(cmd, RSSYMid, RefVar(MAKEINT(0x1a)));
+		SetFrameSlot(cmd, RSSYMreceiver, RefVar(view->fContext));
+		SetFrameSlot(cmd, RSSYMstart, RefVar(MAKEINT(start)));
+		SetFrameSlot(cmd, RSSYMstop, RefVar(MAKEINT(stop)));
+		view->RecognizeRangeCommand(cmd);
+		stop = RINT(RefVar(GetFrameSlot(cmd, RSSYMstop)));
+	}
+	return stop;
+}
+
+
 // ROM 0x00170e90 (unnamed) - SendInsertCommand
 // The spec sent to a view as command 0x4d.  ==> whether it took it.
 static Boolean
@@ -7278,7 +7410,15 @@ MakeParagraphForm(UniChar* text, long length, const Rect& bounds, RefArg info, B
 		if (Length(styles) == 2)
 		{
 			RefVar only(GetArraySlotRef(styles, 1));
-			if (!IsInkWord(only))
+			if (KeepInk() && StyleKeepsInk(only))
+			{
+				// DEVIATION (host, KeepInk): a style that keeps its word's
+				// ink is that word's, not the paragraph's - the run stays
+				// a run, as an ink word's does, and the paragraph's font
+				// is the font alone
+				SetFrameSlot(form, RSSYMviewfont, RefVar(PlainFontFrame(only)));
+			}
+			else if (!IsInkWord(only))
 			{
 				RemoveSlot(form, RSSYMstyles);
 				SetFrameSlot(form, RSSYMviewfont, only);

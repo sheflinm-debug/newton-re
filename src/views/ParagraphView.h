@@ -156,6 +156,7 @@ ULong	GetInputViewTextFlags(ULong textFlags, ULong viewFlags);	// ROM 0x00261d2c
 // something else a style slot may hold.
 // DEVIATION (host, host/KeepInk.h): ink kept after recognition
 Boolean	StyleKeepsInk(RefArg style);						// a font frame carrying its word's ink
+long	ShowRangeAs(TParagraphView* view, long start, long stop, Boolean asInk);	// the words of a range shown as their writing, or as their text
 Ref		PlainFontFrame(RefArg style);						// a style's font alone, as a frame of its own
 Boolean	IsFontFrame(RefArg fontSpec);						// ROM 0x00179f08 IsFontFrame__FRC6RefVar
 

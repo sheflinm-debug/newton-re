@@ -1,0 +1,99 @@
+// Ink kept after recognition (docs/modern/ink-and-text.md; host/KeepInk.h).
+// "ton" is written on the Notepad and read into text.  With NEWTON_KEEP_INK=1
+// the word keeps the writing it came from, so ShowWritingAs turns it back
+// into the writing - one ink word on the page, its reading "ton" going with
+// it - and into text again, the same three characters, without the
+// recogniser being asked a second time.  Without it (the ROM's machine) the
+// text has nothing to turn back into and stays as it is (ctests
+// host.NewtonKeepInk and ...off).
+//
+//   NEWTON_KEEP_INK=1 build/host/host/newton --display 320x480 --headless 120 \
+//       --script src/host/demo/keep-ink.ns
+//
+// Leaves build/keep-ink-writing.pgm and build/keep-ink-text.pgm: the page
+// with the word shown each way.
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+kiName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+kiStroke := func(points)
+  begin
+    PenDown(points[0], points[1]);
+    for i := 2 to Length(points) - 2 by 2 do
+      PenMove(points[i], points[i + 1]);
+    PenUp();
+  end;
+
+kiOval := func(cx, cy, rx, ry)
+  begin
+    local c := [ 0, -50, -87, -100, -87, -50, 0, 50, 87, 100, 87, 50, 0];
+    local s := [100, 87, 50, 0, -50, -87, -100, -87, -50, 0, 50, 87, 100];
+    local pts := [];
+    for k := 0 to 12 do
+      begin
+        AddArraySlot(pts, cx + (rx * c[k]) div 100);
+        AddArraySlot(pts, cy - (ry * s[k]) div 100);
+      end;
+    pts;
+  end;
+
+// "ton", as recognize.ns writes it
+kiBase := 200;
+kiTon := [[66, kiBase - 24, 66, kiBase - 18, 66, kiBase - 12, 66, kiBase - 6, 66, kiBase],
+          [60, kiBase - 14, 64, kiBase - 14, 68, kiBase - 14, 72, kiBase - 14],
+          call kiOval with (82, kiBase - 7, 6, 7),
+          [94, kiBase - 14, 94, kiBase - 7, 94, kiBase, 94, kiBase - 7,
+           95, kiBase - 11, 97, kiBase - 13, 100, kiBase - 14, 103, kiBase - 13,
+           104, kiBase - 10, 104, kiBase - 5, 104, kiBase]];
+
+kiFindParagraph := func(v, prefix)
+  begin
+    local found := nil;
+    if BAnd(v.viewClass, 0xFFFF) = 81 and	// clParagraphView (flags above it)
+       IsString(v.text) and StrPos(v.text, prefix, 0) = 0 then
+      found := v
+    else
+      foreach child in v:ChildViewFrames() do
+        if not found then
+          found := call kiFindParagraph with (child, prefix);
+    found;
+  end;
+
+// what the page holds, said so a test can match it: an ink word is the
+// one character 0xF701
+kiSay := func(para)
+  begin
+    local out := "";
+    for i := 0 to StrLen(para.text) - 1 do
+      out := out & (if Ord(para.text[i]) = 0xF701 then "<ink>" else SPrintObject(para.text[i]));
+    out;
+  end;
+
+call walkSetup with (kiName, func() begin
+    foreach s in kiTon do call kiStroke with (s);
+    IdleStrokes();
+    call waitFor with ("keep-ink: the word read", func() call kiFindParagraph with (GetRoot(), "ton"), func() begin
+        local para := call kiFindParagraph with (GetRoot(), "ton");
+        Print("keep-ink: KeepsInk " & (if KeepsInk() then "true" else "nil") & ", written and read: " & call kiSay with (para));
+
+        local stop := ShowWritingAs(para, nil, nil, 'ink);
+        Print("keep-ink: shown as writing: " & call kiSay with (para) & ", the range ending at " & stop);
+        // (a snapshot is taken after the event; the paragraph is redrawn
+        // a moment later)
+        AddDelayedCall(func() begin
+            ScreenSnapshot("build/keep-ink-writing.pgm");
+            stop := ShowWritingAs(para, nil, nil, 'text);
+            Print("keep-ink: shown as text: " & call kiSay with (para) & ", the range ending at " & stop);
+            AddDelayedCall(func() begin
+                ScreenSnapshot("build/keep-ink-text.pgm");
+                // and once more each way: nothing is lost by going round
+                ShowWritingAs(para, nil, nil, 'ink);
+                stop := ShowWritingAs(para, nil, nil, 'text);
+                Print("keep-ink: round again: " & call kiSay with (para) & ", the range ending at " & stop);
+                Print("keep-ink: done");
+                HostQuit();
+              end, nil, 500);
+          end, nil, 500);
+      end, 60);
+  end);

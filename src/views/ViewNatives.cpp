@@ -23,6 +23,7 @@
 #include "EditView.h"
 #include "DataView.h"
 #include "ParagraphView.h"
+#include "host/KeepInk.h"
 #include "StyleRuns.h"
 #include "RichString.h"
 #include "Dates.h"
@@ -58,6 +59,31 @@
 #include "Animate.h"
 #include "Stroke.h"
 #include "DragDrop.h"
+
+
+// Host (host/KeepInk.h; docs/modern/ink-and-text.md):
+// KeepsInk() - whether ink is kept after recognition;
+// ShowWritingAs(view, start, stop, how) - the words of a paragraph view's
+// range (nil, nil: all of it) shown as their writing (how = 'ink) or as
+// their text ('text).  ==> where the range ends now; nil for a view that
+// is no paragraph.
+static Ref
+FKeepsInk(RefArg /*rcvr*/)
+{
+	return KeepInk() ? TRUEREF : NILREF;
+}
+
+static Ref
+FShowWritingAs(RefArg rcvr, RefArg context, RefArg start, RefArg stop, RefArg how)
+{
+	TView* view = GetView(context);
+	if (view == nil || !view->DerivedFrom(clParagraphView))
+		return NILREF;
+	TParagraphView* para = (TParagraphView*) view;
+	long from = ISINT(start) ? RINT(start) : 0;
+	long to = ISINT(stop) ? RINT(stop) : para->TextLength();
+	return MAKEINT(ShowRangeAs(para, from, to, EQRef(how, RSSYMink)));
+}
 
 
 // ROM 0x001ede1c FGetView__FRC6RefVarT1
@@ -2842,6 +2868,8 @@ RegisterViewNatives(void)
 	RegisterNativeFunction("FGetHilitedTextItems__FRC6RefVar", (void*) FGetHilitedTextItems, 0);
 	RegisterNativeFunction("FHiliteUniqueX", (void*) FHiliteUniqueX, 1);
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "IdleViews")), RefVar(MakeCFunction((void*) FIdleViews, 0, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "KeepsInk")), RefVar(MakeCFunction((void*) FKeepsInk, 0, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "ShowWritingAs")), RefVar(MakeCFunction((void*) FShowWritingAs, 4, nil)));
 	RegisterShapeNatives();
 	RegisterApplicationNatives();
 	RegisterKeyboardNatives();

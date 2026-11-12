@@ -1377,6 +1377,21 @@ set_tests_properties(host.NewtonRecognize PROPERTIES TIMEOUT 180
                      PASS_REGULAR_EXPRESSION "Recognize read ton.*unread strokes came back as nothing.*RecognizeInkWord read ton.*RecognizeTextInStyles made \"an ton\".*RecognizePara made \"ton ton\", the range ending at 7.*ink came back as a piece of 4 strokes.*ink came back as a piece of 4 strokes.*recognize: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain")
 
+# ink kept after recognition (docs/modern/ink-and-text.md, demo/keep-ink.ns):
+# "ton" written and read, shown as its writing (one ink word) and as text
+# again without being read a second time; .off, the ROM's machine, where
+# the text has no writing to go back to
+add_test(NAME host.NewtonKeepInk COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInk PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_KEEP_INK=1"
+                     PASS_REGULAR_EXPRESSION "KeepsInk true, written and read: ton.*shown as writing: <ink>, the range ending at 1.*shown as text: ton, the range ending at 3.*round again: ton, the range ending at 3.*keep-ink: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain")
+add_test(NAME host.NewtonKeepInk.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInk.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_KEEP_INK=0"
+                     PASS_REGULAR_EXPRESSION "KeepsInk nil, written and read: ton.*shown as writing: ton, the range ending at 3.*shown as text: ton, the range ending at 3.*keep-ink: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain")
+
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,
 # VoteOnWordUnit, HandleUnit)

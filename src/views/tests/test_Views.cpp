@@ -5661,6 +5661,47 @@ TestInsertItems()
 		}
 		EXPECT(keptRuns == 2);
 	}
+	// the two shown as their writing: each is the one character an ink
+	// word stands as, its style the ink, the reading still with it
+	EXPECT(ShowRangeAs(p, 0, 6, true) == 4);
+	{
+		const UniChar* shown = GetCString(RefVar(p->Text()));
+		EXPECT(Ustrlen(shown) == 4 && shown[0] == 'a' && shown[1] == kInkWordChar
+			   && shown[2] == kInkWordChar && shown[3] == 'b');
+		RefVar first(p->GetStyleAtOffset(1, nil, nil));
+		RefVar second(p->GetStyleAtOffset(2, nil, nil));
+		EXPECT(IsInkWord(first) && IsInkWord(second));
+		RefVar firstReading(InkWordReading(first));
+		RefVar secondReading(InkWordReading(second));
+		EXPECT(NOTNIL(firstReading) && Ustrcmp(GetCString(firstReading), Uni("hi")) == 0);
+		EXPECT(NOTNIL(secondReading) && Ustrcmp(GetCString(secondReading), Uni("yo")) == 0);
+	}
+	// asked again, nothing to do
+	EXPECT(ShowRangeAs(p, 0, 4, true) == 4);
+	// only the second shown as text again: a range that holds it alone
+	EXPECT(ShowRangeAs(p, 2, 3, false) == 4);
+	{
+		const UniChar* shown = GetCString(RefVar(p->Text()));
+		EXPECT(Ustrlen(shown) == 5 && shown[1] == kInkWordChar && shown[2] == 'y' && shown[3] == 'o');
+		EXPECT(StyleKeepsInk(RefVar(p->GetStyleAtOffset(2, nil, nil))));
+		EXPECT(StyleKeepsInk(RefVar(p->GetStyleAtOffset(3, nil, nil))));
+		EXPECT(!StyleKeepsInk(RefVar(p->GetStyleAtOffset(4, nil, nil))));
+	}
+	// and the whole of it as text: as it was
+	EXPECT(ShowRangeAs(p, 0, 5, false) == 6);
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
+	{
+		RefVar first(p->GetStyleAtOffset(1, nil, nil));
+		EXPECT(StyleKeepsInk(first));
+		if (StyleKeepsInk(first))
+		{
+			RefVar ink(GetFrameSlot(first, RSSYMink));
+			EXPECT(memcmp(BinaryData(ink), BinaryData(word), InkWordStrokesSize(word)) == 0);
+		}
+	}
+	// a range that cuts a word leaves it alone
+	EXPECT(ShowRangeAs(p, 0, 2, true) == 2);
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
 	SetKeepInk(false);
 
 	// and the undo the insert made puts the paragraph back

@@ -20,6 +20,8 @@
 #include "Ink.h"
 #include "RecConfig.h"		// GetRecognitionView
 #include "InkShapes.h"
+#include "InkReading.h"
+#include "host/KeepInk.h"
 #include "StrokeBundle.h"
 #include "DrawShape.h"
 #include "Locale.h"			// GetPreference
@@ -3077,6 +3079,26 @@ TEditView::AddNewParagraph(UniChar* text, ULong length, Rect& box, Rect& room,
 		SetFrameSlot(theInfo, RSSYMstyles, styles);
 		SetArraySlot(styles, 0, MAKEINT(length));
 		SetArraySlot(styles, 1, nextStyle);
+		// DEVIATION (host, KeepInk; docs/modern/ink-and-text.md): a word
+		// read into text keeps the writing it came from - the unit's
+		// strokes packed as an ink word, the text its reading - in the
+		// style of its run, as a word put into a paragraph that is
+		// already there does (ParagraphView.cpp)
+		if (KeepInk() && !hasInkFont && length > 0)
+		{
+			RefVar kept(unit->Strokes());
+			if (NOTNIL(kept))
+				kept = CompressStrokes(kept);
+			if (NOTNIL(kept) && !IsInkWord(kept) && IsFrame(kept))
+				kept = GetFrameSlot(kept, RSSYMink);
+			RefVar font(PlainFontFrame(nextStyle));
+			if (IsInkWord(kept) && NOTNIL(font))
+			{
+				RefVar word(MakeString(text, (long) length));
+				SetFrameSlot(font, RSSYMink, RefVar(InkWordWithReading(kept, word)));
+				SetArraySlot(styles, 1, font);
+			}
+		}
 	}
 
 	StyleRecord styleRecord;

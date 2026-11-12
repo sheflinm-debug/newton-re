@@ -4,11 +4,26 @@
 
 ## State (2026-11-11)
 
-Built, behind `NEWTON_KEEP_INK=1` (off by default): a reading inside an
-ink word, and a word read into text keeping its ink - as the pen writes
-it or by deferred recognition. Not built: the menu item that shows a word
-the other way, Find over readings, reading ink in the background, the
-preferences, a demo of the whole.
+Built, behind `NEWTON_KEEP_INK=1` (off by default):
+- a reading inside an ink word (`ink/InkReading.h`);
+- a word read into text keeping its ink, whether it starts a paragraph
+  (`TEditView::AddNewParagraph`), goes into one, or is read later out of
+  an ink word;
+- the words of a range shown as their writing or as their text
+  (`ShowRangeAs` in `views/ParagraphView.cpp`), and for scripts
+  `KeepsInk()` and `ShowWritingAs(view, start, stop, 'ink | 'text)`
+  (nil, nil: the whole paragraph), which answers where the range ends now.
+
+`src/host/demo/keep-ink.ns` writes "ton" on the Notepad, shows it as its
+writing and as text again, and leaves a picture of each (ctests
+`host.NewtonKeepInk` and `.off`; `test_Views`' `TestInsertItems`).
+
+Not built: the menu item (it needs the owner's word on which menu - the
+corrector a double tap opens, or the Notepad's Recognize button), Find
+over readings, reading ink in the background, an edited word's ink
+dropped as it is edited (today it is only refused when shown as writing),
+a style change over a kept word, the preferences, a whole note or a
+selection across paragraphs in one call.
 
 ## What Newton has
 
