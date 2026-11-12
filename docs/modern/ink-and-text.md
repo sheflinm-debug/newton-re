@@ -21,14 +21,38 @@ does not see writing left as ink.
 
 ## Design
 
-**Both forms in one word.** An ink word gains a reading: the recogniser's
-best text and its alternatives, held with the strokes. A recognised word
-gains its ink: the strokes it came from, held with the text. Either way the
-item in the paragraph has strokes, a reading, and a flag for which is
-shown. In the saved form these are extra slots on the paragraph's existing
-ink-word and style data, so a note written on this system still opens on a
-MessagePad (which shows what the flag says and ignores the rest: to be
-checked against the ROM's readers before the format is fixed).
+**Both forms in one word.** Either way the word has strokes, a reading,
+and one of them showing.
+
+*Shown as ink* (built: `ink/InkReading.h`, ctest `ink.Ink`). The word is an
+ordinary ink word - one 0xF701 character whose style run is the `'inkWord`
+binary - and its reading is carried **inside that binary**, between the
+strokes and the eight bytes of information that end it:
+
+    strokes | reading, UniChars, big-endian | count, a halfword | 'IRd1' | the eight bytes
+
+A MessagePad never sees it. The ROM finds the information as the last
+eight bytes (`GetPackedInkWordInfo` 0x0014022c) and its decoder stops at
+the end of the strokes' group (`DecoderRun`); the test expands a word with
+and without a reading and gets the same points. So the reading goes
+wherever the word goes - cut, pasted, beamed, saved - with nothing beside
+it to keep in step. Ink the ROM's code re-encodes (two words joined, one
+split) comes out without a reading and is read again.
+
+*Shown as text* (not built; the format still to be proved). The word is
+its characters, in a style run of their own whose font frame carries the
+ink: `{family, face, size, ink: <the ink word, its reading the text>}`. A
+MessagePad reads the frame as a font and ignores the slot. Three things
+must hold on the host for the ink to stay with its word:
+- two styles with different `ink` are different styles (the ROM's
+  `EqualStyles` compares only family, face and size, and would merge the
+  runs of neighbouring words);
+- text typed next to the word gets the font without the `ink`
+  (`GetStyleForInsertion`);
+- a run whose characters no longer spell the ink's reading has been
+  edited, and its ink is dropped.
+On a MessagePad the first does not hold, so editing such a note there can
+lose kept ink (never text).
 
 **Reading ink in the background.** An ink word with no reading is
 recognised when the machine is idle, a few words at a time, and only the

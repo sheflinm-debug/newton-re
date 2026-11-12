@@ -4,6 +4,7 @@
 // bit reader, and the two code books, which are ROM objects.
 
 #include "Ink.h"
+#include "InkReading.h"
 #include "CICCodec.h"
 #include "ROMImport.h"
 #include "NewtonMemory.h"
@@ -2095,6 +2096,97 @@ TestInkWordPicture()
 }
 
 
+// DEVIATION (host): a reading kept inside an ink word (InkReading.h).
+// What makes it safe on a MessagePad is tested here: the word still
+// measures, expands and compares as it did, the reading unseen.
+static bool
+SameStrokes(TStroke** a, TStroke** b)
+{
+	if (a == nil || b == nil)
+		return false;
+	long i = 0;
+	for ( ; a[i] != nil && b[i] != nil; i++)
+	{
+		if (a[i]->fCount != b[i]->fCount)
+			return false;
+		for (long j = 0; j < (long) a[i]->fCount; j++)
+		{
+			FPoint p, q;
+			a[i]->GetFPoint(j, &p);
+			b[i]->GetFPoint(j, &q);
+			if (p.x != q.x || p.y != q.y)
+				return false;
+		}
+	}
+	return a[i] == nil && b[i] == nil;
+}
+
+static void
+TestInkReading()
+{
+	InitializeInkCodecs();
+
+	TStroke* list[3];
+	list[0] = MakeLine(10, 20, 40, 44, 12);
+	list[1] = MakeLine(42, 44, 60, 18, 9);
+	list[2] = nil;
+	Rect box;
+	RefVar word(TStrokesToInkWord(list, &box));
+	EXPECT(IsInkWord(word));
+	EXPECT(ISNIL(InkWordReading(word)));
+	EXPECT(InkWordStrokesSize(word) == Length(word) - (long) sizeof(PackedInkWordInfo));
+
+	const UniChar ton[] = { 't', 'o', 'n', 0 };
+	RefVar reading(MakeString(ton, 3));
+	RefVar read(InkWordWithReading(word, reading));
+	EXPECT(NOTNIL(read) && IsInkWord(read));
+	EXPECT(Length(read) == Length(word) + 3 * 2 + 6);
+	EXPECT(InkWordStrokesSize(read) == InkWordStrokesSize(word));
+
+	// the reading comes back
+	RefVar back(InkWordReading(read));
+	EXPECT(NOTNIL(back) && IsString(back) && Length(back) == 4 * (long) sizeof(UniChar));
+	if (NOTNIL(back))
+		EXPECT(memcmp(BinaryData(back), ton, sizeof(ton)) == 0);
+
+	// what the ROM looks at is as it was: the last eight bytes ...
+	PackedInkWordInfo before, after;
+	GetPackedInkWordInfo(word, &before);
+	GetPackedInkWordInfo(read, &after);
+	EXPECT(memcmp(&before, &after, sizeof(before)) == 0);
+	// ... and the strokes its decoder walks, which stops at the end of
+	// their group and never reaches the reading
+	TStroke** plain = InkExpand(word, 0, 0, 0);
+	TStroke** withReading = InkExpand(read, 0, 0, 0);
+	EXPECT(plain != nil && plain[0] != nil && plain[1] != nil && plain[2] == nil);
+	EXPECT(SameStrokes(plain, withReading));
+	TStroke** plain1 = InkExpand(word, 1, 0, 0);
+	TStroke** withReading1 = InkExpand(read, 1, 0, 0);
+	EXPECT(SameStrokes(plain1, withReading1));
+
+	// another reading in its place, a longer one
+	const UniChar tone[] = { 't', 'o', 'n', 'e', 0x00e9, 0 };
+	RefVar longer(InkWordWithReading(read, MakeString(tone, 5)));
+	EXPECT(Length(longer) == Length(word) + 5 * 2 + 6);
+	RefVar longerBack(InkWordReading(longer));
+	EXPECT(NOTNIL(longerBack) && memcmp(BinaryData(longerBack), tone, sizeof(tone)) == 0);
+
+	// the reading taken out leaves the word byte for byte
+	RefVar bare(InkWordWithReading(longer, RefVar(NILREF)));
+	EXPECT(Length(bare) == Length(word));
+	EXPECT(memcmp(BinaryData(bare), BinaryData(word), Length(word)) == 0);
+	EXPECT(ISNIL(InkWordReading(bare)));
+	// and a word with none is handed back as it is
+	EXPECT(InkWordWithReading(word, RefVar(NILREF)) == (Ref) word);
+
+	// not ink words
+	RefVar raw(InkCompress(list, false));
+	EXPECT(ISNIL(InkWordReading(raw)));
+	EXPECT(ISNIL(InkWordWithReading(raw, reading)));
+	EXPECT(ISNIL(InkWordWithReading(word, MAKEINT(3))));
+}
+
+
 int
 main()
 {
@@ -2144,6 +2236,7 @@ main()
 	TestInkFont();
 	TestInkWordPicture();
 	TestInkWordFontParms();
+	TestInkReading();
 
 	if (failures == 0)
 		printf("test_Ink: all passed\n");

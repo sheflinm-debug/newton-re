@@ -4,6 +4,7 @@
 # compression underneath it (the CIC encoder and decoder) is NOT YET.
 add_library(ink STATIC
     Ink.cpp
+    InkReading.cpp
     InkStrokes.cpp
     InkShapes.cpp
     InkFont.cpp
