@@ -18,6 +18,13 @@
 				  Writing on, or leaving it, changes nothing: the offer is
 				  only drawn, never stored.
 
+				- a bullet or a number: the paragraph is a list item (a
+				  `list` slot, 'bullet or 'number; a number is one more than
+				  the numbered items straight above it).  A paragraph whose
+				  text begins "- ", "* " or "1. " is offered as one - a
+				  dotted bullet - and a tap accepts it, the mark written
+				  taken out of the text.
+
 				Stars are shown with marking on, checkboxes with structure
 				on (host/Features.h).  The slots go wherever the note goes;
 				a MessagePad ignores them.  Saving the note after a change
@@ -35,6 +42,11 @@ void	DrawMargin(TView* editor);
 // a tap on the page: true when it was on a star or a checkbox, and was
 // done here (the caret is then not moved)
 Boolean	TapMargin(TView* editor, Point& pt);
+
+// How many characters at the start of the text are a list item's mark
+// written as text - "- ", "* ", a bullet and a space (a bulleted item), or
+// "1. ", "12) " (a numbered one) - 0 for none; which kind.
+long	ListWrittenLength(RefArg text, Ref* kind);
 
 // How many characters at the start of the text are a checkbox written as
 // text (with the one space after it), 0 for none; whether it is ticked.

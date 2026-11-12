@@ -1,6 +1,6 @@
 # Structure and meaning recognised from what is written
 
-**Status: a first piece built (2026-11-12): checkboxes in a plain note,
+**Status: a first piece built (2026-11-12): checkboxes and lists in a plain note,
 behind the Host panel's "Checkboxes and lists" (`NEWTON_STRUCTURE=1`/`=0`
 overrides; `host/Features.h`). The rest is a proposal.**
 
@@ -20,12 +20,19 @@ overrides; `host/Features.h`). The rest is a proposal.**
   stored, so writing on or leaving it changes nothing. A tap on it accepts:
   the box written is taken out of the text and the paragraph made an item
   (ticked for "[x]"). This is the page's "offers, not conversions".
+- **Lists** the same way: a paragraph's `list` slot, 'bullet or 'number,
+  draws a bullet or its number in the margin (a number is one more than
+  the numbered items straight above it); a text beginning "- ", "* ", a
+  bullet, or "1. "/"12) " is offered with a dotted bullet, and a tap takes
+  the mark written out and makes the item.
 - Demo `src/host/demo/checkboxes.ns`, ctests `host.NewtonCheckboxes` and
-  `.off`; pictures `build/checkboxes-offer.pgm`, `build/checkboxes.pgm`.
+  `.off`; pictures `build/checkboxes-offer.pgm`, `build/checkboxes.pgm`,
+  `build/checkboxes-list.pgm`.
 
-Not built yet: a square *drawn* before a line (it needs the stroke
-positions: the structure recogniser proper, below); lists (a dash or
-number then words); live details; headings, sums, tables, diagrams; a
+Not built yet: a square or a dash *drawn* before a line (it needs the
+stroke positions: the structure recogniser proper, below); a list item's
+level (a line begun further right); a new line after an item continuing
+the list; live details; headings, sums, tables, diagrams; a
 tap accepting being undone by a scrub (Undo does undo the text change).
 
 ## The proposal

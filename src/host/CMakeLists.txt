@@ -1451,7 +1451,7 @@ set_tests_properties(host.NewtonMarking.off PROPERTIES TIMEOUT 180
 add_test(NAME host.NewtonCheckboxes COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/checkboxes.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
 set_tests_properties(host.NewtonCheckboxes PROPERTIES TIMEOUT 180
                      ENVIRONMENT "NEWTON_STRUCTURE=1"
-                     PASS_REGULAR_EXPRESSION "HostFeatureOn true, the pop-up has 3 items.*To do picked, the paragraph Open.*the box tapped, Done.*tapped again, Open.*written .x. milk, the paragraph none.*the offer tapped, the text milk, the paragraph Done.*checkboxes: done"
+                     PASS_REGULAR_EXPRESSION "HostFeatureOn true, the pop-up has 3 items.*To do picked, the paragraph Open.*the box tapped, Done.*tapped again, Open.*written .x. milk, the paragraph none.*the offer tapped, the text milk, the paragraph Done.*1. eggs tapped, the text eggs, a list item number.*checkboxes: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 add_test(NAME host.NewtonCheckboxes.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/checkboxes.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
 set_tests_properties(host.NewtonCheckboxes.off PROPERTIES TIMEOUT 180

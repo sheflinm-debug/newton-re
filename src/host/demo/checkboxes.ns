@@ -5,7 +5,8 @@
 // margin; a tap on the box ticks it, another unticks it.  Then the
 // paragraph's text is made "[x] milk": a checkbox written as text is
 // offered (a dotted box), and a tap on it accepts - the text "milk", the
-// item ticked.  Without it the pop-up is the ROM's (ctests
+// item ticked; and "1. eggs" likewise offered as a numbered list item.
+// Without it the pop-up is the ROM's (ctests
 // host.NewtonCheckboxes and ...off).
 //
 //   NEWTON_STRUCTURE=1 build/host/host/newton --display 320x480 --headless 120 //       --script src/host/demo/checkboxes.ns
@@ -145,8 +146,21 @@ call walkSetup with (ckName, func() begin
                                 Print("checkboxes: the offer tapped, the text " & para.text & ", the paragraph " & call ckState with (para));
                                 AddDelayedCall(func() begin
                                     ScreenSnapshot("build/checkboxes.pgm");
-                                    Print("checkboxes: done");
-                                    HostQuit();
+                                    // a list item written as text: "1. eggs" offered, accepted
+                                    GetGlobalVar('|HostMarks:host|):ToggleChecks([para]);
+                                    SetValue(para, 'text, "1. eggs");
+                                    AddDelayedCall(func() begin
+                                        local c3 := call ckBox with (para);
+                                        call ckTap with (c3.x, c3.y);
+                                        call waitFor with ("checkboxes: the list offer taken", func() para._proto.list, func() begin
+                                            Print("checkboxes: 1. eggs tapped, the text " & para.text & ", a list item " & para._proto.list);
+                                            AddDelayedCall(func() begin
+                                                ScreenSnapshot("build/checkboxes-list.pgm");
+                                                Print("checkboxes: done");
+                                                HostQuit();
+                                              end, nil, 800);
+                                          end, 20);
+                                      end, nil, 800);
                                   end, nil, 800);
                               end, 20);
                           end, nil, 800);

@@ -55,6 +55,33 @@ CheckboxWrittenLength(RefArg text, Boolean* ticked)
 }
 
 
+long
+ListWrittenLength(RefArg text, Ref* kind)
+{
+	*kind = NILREF;
+	if (!IsString(text))
+		return 0;
+	const UniChar* s = (const UniChar*) BinaryData(text);
+	long length = (Length(text) - 2) / (long) sizeof(UniChar);
+	// a dash, a star or a bullet, and a space: a bulleted item
+	if (length >= 3 && (s[0] == '-' || s[0] == '*' || s[0] == 0x2022) && s[1] == ' ' && s[2] != ' ')
+	{
+		*kind = Sym("bullet");
+		return 2;
+	}
+	// one or two digits, a full stop or a bracket, and a space: a numbered one
+	long n = 0;
+	while (n < 2 && n < length && s[n] >= '0' && s[n] <= '9')
+		n++;
+	if (n > 0 && n + 2 < length && (s[n] == '.' || s[n] == ')') && s[n + 1] == ' ' && s[n + 2] != ' ')
+	{
+		*kind = Sym("number");
+		return n + 2;
+	}
+	return 0;
+}
+
+
 // What the margin beside one paragraph holds, and where.
 struct MarginItems
 {
@@ -63,9 +90,49 @@ struct MarginItems
 	Boolean	fOffer;			// a dotted box: a checkbox written as text
 	Boolean	fOfferTicked;
 	long	fOfferLength;
-	Rect	fBox;			// the checkbox (or the offer)
+	Ref		fList;			// 'bullet, 'number or nil: a list item
+	Ref		fListOffer;		// the same, written as text: an offer
+	long	fListOfferLength;
+	long	fNumber;		// a numbered item's number
+	Rect	fBox;			// the checkbox or the list's mark (or the offer)
 	Rect	fStar;
 };
+
+
+// A numbered item's number: one more than the numbered items straight
+// above it on the page (the page's children are in the order written, so
+// they are taken by where they are).
+static long
+NumberOf(TView* editor, TView* child)
+{
+	RefVar listSym(Sym("list"));
+	long number = 1;
+	long above = child->viewBounds.top;
+	for (;;)
+	{
+		// the paragraph nearest above
+		TView* nearest = nil;
+		long children = editor->fChildren->Count();
+		for (long i = 0; i < children; i++)
+		{
+			TView* other = editor->fChildren->At((short) i);
+			if (other == nil || other == child || !other->DerivedFrom(clParagraphView))
+				continue;
+			if (other->viewBounds.top < above && (nearest == nil || other->viewBounds.top > nearest->viewBounds.top))
+				nearest = other;
+		}
+		if (nearest == nil)
+			break;
+		RefVar data(nearest->DataFrame());
+		if (!IsFrame(data) || !EQRef(GetFrameSlot(data, listSym), Sym("number")))
+			break;
+		number++;
+		above = nearest->viewBounds.top;
+		if (number > 99)
+			break;
+	}
+	return number;
+}
 
 
 static Boolean
@@ -76,6 +143,10 @@ ItemsOf(TView* editor, TView* child, MarginItems* items)
 	items->fOffer = false;
 	items->fOfferTicked = false;
 	items->fOfferLength = 0;
+	items->fList = NILREF;
+	items->fListOffer = NILREF;
+	items->fListOfferLength = 0;
+	items->fNumber = 0;
 	if (child == nil || !child->DerivedFrom(clParagraphView))
 		return false;
 	RefVar data(child->DataFrame());
@@ -98,11 +169,32 @@ ItemsOf(TView* editor, TView* child, MarginItems* items)
 				items->fOfferTicked = ticked;
 				items->fOfferLength = n;
 			}
+			else
+			{
+				// not a to-do item: a list item, or one written as text
+				Ref list = GetFrameSlot(data, RefVar(Sym("list")));
+				if (EQRef(list, Sym("bullet")) || EQRef(list, Sym("number")))
+				{
+					items->fList = list;
+					if (EQRef(list, Sym("number")))
+						items->fNumber = NumberOf(editor, child);
+				}
+				else if ((child->fFlags & (vReadOnly | vWriteProtected)) == 0)
+				{
+					Ref kind;
+					long length = ListWrittenLength(RefVar(((TParagraphView*) child)->Text()), &kind);
+					if (length > 0)
+					{
+						items->fListOffer = kind;
+						items->fListOfferLength = length;
+					}
+				}
+			}
 		}
 	}
-	if (!items->fMarked && ISNIL(items->fCheck) && !items->fOffer)
+	if (!items->fMarked && ISNIL(items->fCheck) && !items->fOffer && ISNIL(items->fList) && ISNIL(items->fListOffer))
 		return false;
-	Boolean box = NOTNIL(items->fCheck) || items->fOffer;
+	Boolean box = NOTNIL(items->fCheck) || items->fOffer || NOTNIL(items->fList) || NOTNIL(items->fListOffer);
 	long boxLeft = child->viewBounds.left - 11;
 	long starLeft = box && items->fMarked ? boxLeft - 10 : boxLeft;
 	long floor = editor->viewBounds.left + 1;
@@ -159,6 +251,45 @@ DrawMargin(TView* editor)
 				for (long x = 0; x < 7; x++)
 					if (kStar[y][x] == '#')
 						Dot(items.fStar.left + x, items.fStar.top + y);
+		if (NOTNIL(items.fList) || NOTNIL(items.fListOffer))
+		{
+			const Rect& b = items.fBox;
+			Boolean offer = NOTNIL(items.fListOffer);
+			if (EQRef(items.fList, Sym("number")))
+			{
+				// the number, its digits right against the box's right
+				static const char* const kDigits[10][5] = {
+					{ "###", "#.#", "#.#", "#.#", "###" }, { ".#.", "##.", ".#.", ".#.", "###" },
+					{ "###", "..#", "###", "#..", "###" }, { "###", "..#", ".##", "..#", "###" },
+					{ "#.#", "#.#", "###", "..#", "..#" }, { "###", "#..", "###", "..#", "###" },
+					{ "###", "#..", "###", "#.#", "###" }, { "###", "..#", ".#.", ".#.", ".#." },
+					{ "###", "#.#", "###", "#.#", "###" }, { "###", "#.#", "###", "..#", "###" } };
+				long n = items.fNumber;
+				long x = b.right - 2;					// the full stop
+				Dot(x, b.top + 6);
+				do
+				{
+					long d = n % 10;
+					x -= 4;
+					for (long y = 0; y < 5; y++)
+						for (long c = 0; c < 3; c++)
+							if (kDigits[d][y][c] == '#')
+								Dot(x + c, b.top + 2 + y);
+					n /= 10;
+				} while (n > 0);
+			}
+			else
+			{
+				// a bullet: a round dot, hollow and dotted for an offer
+				static const char* const kBullet[4] = { ".##.", "####", "####", ".##." };
+				for (long y = 0; y < 4; y++)
+					for (long x = 0; x < 4; x++)
+						if (kBullet[y][x] == '#' && (!offer || ((x + y) & 1) == 0))
+							Dot(b.left + 2 + x, b.top + 2 + y);
+				if (offer && EQRef(items.fListOffer, Sym("number")))
+					Dot(b.left + 7, b.top + 6);			// (a numbered one's offer: its full stop too)
+			}
+		}
 		if (NOTNIL(items.fCheck) || items.fOffer)
 		{
 			const Rect& b = items.fBox;
@@ -221,6 +352,18 @@ TapMargin(TView* editor, Point& pt)
 			}
 			else
 				Tell("ToggleDone", child->fContext);
+			editor->Dirty(nil);
+			return true;
+		}
+		if (NOTNIL(items.fListOffer) && PtInRect(pt, &box))
+		{
+			// the dash or number written taken out, and the paragraph
+			// made a list item
+			TParagraphView* para = (TParagraphView*) child;
+			RefVar kind(items.fListOffer);
+			DoInsertItems(para, RefVar(MakeString("")), false, true, 0, items.fListOfferLength, false, RefVar(NILREF));
+			SetFrameSlot(RefVar(child->DataFrame()), RefVar(Sym("list")), kind);
+			Tell("SaveNoteOf", child->fContext);
 			editor->Dirty(nil);
 			return true;
 		}
