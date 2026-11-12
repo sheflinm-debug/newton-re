@@ -1,0 +1,17 @@
+// Sync, step B1 (sync-common.ns): a new device takes A's entries, then
+// changes Alice's phone and company and adds Bob; synced.
+HostInclude("sync-common.ns");
+
+call syRun with ("b1", func() begin
+  local report := call sySync with ();
+  Print("sync-b1: from A, added " & report.added & ": Alice " & call syYesNo with (call syCard with ("Alice"))
+    & " (" & call syAlice with () & "), the note " & call syYesNo with (call syNote with ()));
+  local alice := call syCard with ("Alice");
+  alice.phones := ["222"];
+  alice.company := "Acme B";
+  EntryChangeXmit(alice, sySym);
+  GetUnionSoup("Names"):AddToDefaultStoreXmit({class: 'person, cardType: 0,
+    name: {class: 'person, first: "Bob", last: "Ray"}, sorton: "Ray Bob", phones: ["333"]}, sySym);
+  report := call sySync with ();
+  Print("sync-b1: changed here " & report.scanned & ", " & Length(HostSyncList()) & " device files in the folder");
+end);

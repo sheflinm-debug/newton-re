@@ -1,7 +1,8 @@
 # Sync: several Newtons, one set of data, no cloud owner
 
-**Status: a proposal. The largest piece here; the conflict rule is the
-owner's decision.**
+**Status: a proposal; a first version built (2026-11-12) - sync through a
+folder, the conflict rule as proposed here (State). The conflict rule
+remains the owner's decision.**
 
 ## What Newton has
 
@@ -84,3 +85,85 @@ folder carrier with a temporary directory.
 2. Direct, folder, or both first.
 3. Whether 64-bit stamps justify the wide-integer store format that the
    64-bit flavour still lacks (`docs/next-steps.md`).
+
+## State (2026-11-12, branch `modern`)
+
+Built, behind the Host panel's "Sync" (`host/Features.h`'s `kFeatureSync`,
+`NEWTON_SYNC`): `src/host/HostSync.ns` (the global `HostSync:host`) over
+`host/HostSync.cpp`. The owner said to carry on without asking, so the
+open decisions were taken as this page proposes, each easy to change:
+
+- **Decision 1, the conflict rule:** as proposed above. Slot by slot the
+  later stamp wins, the loser kept in the entry's `syncConflict`
+  (`{slot: {value, stamp}}`). Changed against deleted, the change wins.
+- **Decision 2, the carrier:** the folder first.
+- **Decision 3, wide stamps:** not forced. A stamp is a string that sorts
+  as it should - `SSSSSSSSSSSS.CCCCCC.DEVICE`: the host's seconds since
+  1970 (`HostSyncSeconds`), a counter, the device's id - so no integer
+  wider than NewtonScript's is needed.
+
+How it works:
+- **Identity:** each synced entry gets `syncID` (128 bits from the
+  system's random generator, `HostSyncRandomID`), the same on every
+  device. Each device gets an id of its own, made at its first sync.
+- **The clock:** a hybrid logical clock. A device's next stamp is later
+  than every stamp it has made or seen, so changes stay in order when a
+  clock is wrong.
+- **What each device keeps** (the soup `Sync:host` on its internal store):
+  a record per synced entry - its soup, and for each top-level slot (not
+  the `_` system slots, `syncID` or `syncConflict`) the value last
+  synced, its stamp, and the stamp it replaced (`prev`). Deleted entries
+  are kept as tombstones (`deleteStamp`, and `deletePrev`, the newest
+  stamp the deleter had).
+- **A sync** - when asked (`Sync()`), three seconds after a synced soup
+  changes, and every `NEWTON_SYNC_EVERY` seconds (300; 0 never) - does
+  three things:
+  - it scans the synced soups and gives a new stamp to every slot whose
+    value is not the record's. Applications need no change, and changes
+    made while sync was off are found too;
+  - it reads the other devices' files from the folder, as NSOF unflattened
+    without code (`'unflattenNoCode`), skipping a file not rewritten
+    since last time, and merges them;
+  - it writes this device's whole state as `<device>.nsof` - a temporary
+    file renamed over the old one, so another device never reads half of
+    it.
+- **The merge** is of states, not logs, so its result is the same in
+  whatever order and however often it is done, and an exchange cut short
+  is simply done again. A slot is taken when its stamp is later. It is a
+  conflict when the loser's stamp is newer than the stamp the winner's
+  value replaced - both changed it without seeing the other - and the
+  values differ. A tombstone deletes the entry unless the entry has a
+  stamp newer than the tombstone's `deletePrev`, and the other way round
+  an entry comes back.
+- **The folder:** `NEWTON_SYNC_FOLDER`, else "Newton Sync" in the home
+  folder - a shared disk, or any file-sync service's folder.
+- **Soups:** Names, Notes, Calendar, Repeat Meetings, To Do (`soups` in
+  `HostSync.ns`).
+- **Tests:** ctests `host.NewtonSync.A1` ... `.A3` and `.off`
+  (`src/host/demo/sync-common.ns` describes the steps). Two devices - two
+  stores - and one folder, five runs in turn:
+  - an add each way;
+  - a change to different slots of one card (both kept) and to the same
+    slot (later wins, the loser in `syncConflict` on both devices);
+  - a delete against a change (the change wins, and comes back to the
+    deleting device);
+  - a clock a day slow, whose change still orders after what that device
+    has seen.
+
+Not built (NOT YET):
+- the direct carrier (mDNS and sockets);
+- pairing and encryption - the folder must be one only the user's devices
+  can read;
+- change logs in place of whole states - each file holds every entry,
+  fine for a personal set of data;
+- tombstones forgotten once every device has seen them;
+- the Sync panel - the soups are fixed;
+- the marker in the applications for choosing a conflict's value;
+- merging text character by character;
+- an index on `syncID` (finding an entry is a walk of its soup);
+- a first sync between devices that already share data. Each device's
+  entries are new to the other, so two devices that both went through
+  Setup each get the other's owner card, and the same card typed into
+  both appears twice;
+- a device back after a long absence and an interrupted exchange, which
+  are not tested separately.

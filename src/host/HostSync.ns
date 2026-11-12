@@ -1,0 +1,444 @@
+// Sync: several Newtons, one set of data, through a folder (docs/modern/sync.md).
+// Compiled into newton (HostSyncSource.cpp, made by src/cmake/EmbedText.cmake)
+// and evaluated at boot by HostInstallSync (host/HostSync.cpp); the frame is
+// kept in the global HostSync:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureSync - the Host panel's
+// "Sync", NEWTON_SYNC): the ROM synchronises with one desktop at a time (the
+// dock); this lets Newtons agree among themselves, with no server.
+//
+// Identity: each synced entry gets `syncID`, 128 random bits, the same on
+// every device; each device an id of its own.  Stamps are a hybrid logical
+// clock written as a string that sorts as it should - "SSSSSSSSSSSS.CCCCCC.
+// DEVICE": the host's seconds since 1970, a counter, the device - so no
+// integer wider than NewtonScript's is needed (sync.md's decision 3 is not
+// forced).  A device's next stamp is later than every stamp it has seen,
+// so changes stay in order when its clock is wrong.
+//
+// What each device keeps (the soup "Sync:host" on its internal store): a
+// record for every synced entry - its soup, and for each top-level slot the
+// value last synced, the stamp of that value and the stamp it replaced
+// (`prev`) - and tombstones for deleted entries.  Sync (on demand, and a
+// few seconds after a synced soup changes): the soups are scanned and every
+// slot whose value is not the record's gets a new stamp (so applications
+// need no change, and changes made while sync was off are found too); the
+// other devices' files are read and merged; this device's whole state is
+// written to the folder as <device>.nsof (NSOF, written whole and renamed
+// into place).  State, not a log: merging is the same whatever the order
+// and however often it is done, so an exchange cut short is simply done
+// again.
+//
+// Conflicts (sync.md's rule, decision 1 taken as the page proposes): slot
+// by slot the later stamp wins, so changes to different slots of one entry
+// both survive; when both sides changed the same slot - the loser's stamp
+// newer than what the winner's value replaced - the loser's value is kept
+// in the entry's `syncConflict` ({slot: {value, stamp}}).  An entry changed
+// on one device and deleted on another: the change wins.
+//
+// Besides, every NEWTON_SYNC_EVERY seconds (300; 0 never) a sync looks for
+// the other devices' changes.
+//
+// Carrier: the folder (sync.md's decision 2 taken as the folder first):
+// NEWTON_SYNC_FOLDER, else "Newton Sync" in the home folder - a shared disk
+// or any file-sync service's folder.
+//
+// NOT YET (sync.md): the direct carrier (mDNS, sockets); pairing and
+// encryption (the folder must be one only the user's devices can read);
+// change logs instead of whole states (each file holds every entry);
+// tombstones forgotten once every device has seen them; the Sync panel
+// (the soups are `soups` below); the marker the user taps to choose a
+// conflict's value; merging text character by character.
+
+{
+	stateSoup: "Sync:host",
+	appSymbol: '|Sync:host|,
+	soups: ["Names", "Notes", "Calendar", "Repeat Meetings", "To Do"],
+	delayMilliseconds: 3000,			// a sync this long after a change
+
+	device: nil,						// this device's id
+	last: nil,							// the latest stamp made or seen
+	pending: nil,						// a sync asked for
+	lastReport: nil,					// what the last sync did
+
+	// --- stamps -------------------------------------------------------
+
+	Later: func(a, b) StrExactCompare(a, b) > 0,
+
+	Pad: func(n, width)
+	begin
+		local s := NumberStr(n);
+		while StrLen(s) < width do s := "0" & s;
+		s;
+	end,
+
+	NewStamp: func()
+	begin
+		local now := HostSyncSeconds();
+		local seconds := now;
+		local count := 0;
+		if last then begin
+			local lastSeconds := SubStr(last, 0, 12);
+			if StrExactCompare(now, lastSeconds) <= 0 then begin
+				seconds := lastSeconds;
+				count := StringToNumber(SubStr(last, 13, 6)) + 1;
+			end;
+		end;
+		last := seconds & "." & :Pad(count, 6) & "." & device;
+		last;
+	end,
+
+	Observe: func(stamp)
+		if IsString(stamp) and (not last or :Later(stamp, last)) then last := stamp,
+
+	// --- values -------------------------------------------------------
+
+	// whether two values are the same, deeply (strings exactly)
+	Same: func(a, b)
+	begin
+		if a = b then return true;
+		if not a or not b then return nil;
+		if IsString(a) or IsString(b) then
+			return IsString(a) and IsString(b) and StrExactCompare(a, b) = 0;
+		if IsArray(a) then begin
+			if not IsArray(b) or Length(a) <> Length(b) or ClassOf(a) <> ClassOf(b) then return nil;
+			for i := 0 to Length(a) - 1 do
+				if not :Same(a[i], b[i]) then return nil;
+			return true;
+		end;
+		if IsFrame(a) then begin
+			if not IsFrame(b) or Length(a) <> Length(b) then return nil;
+			foreach slot, value in a do
+				if not HasSlot(b, slot) or not :Same(value, b.(slot)) then return nil;
+			return true;
+		end;
+		if IsBinary(a) then begin
+			if not IsBinary(b) or Length(a) <> Length(b) or ClassOf(a) <> ClassOf(b) then return nil;
+			for i := 0 to Length(a) - 1 do
+				if ExtractByte(a, i) <> ExtractByte(b, i) then return nil;
+			return true;
+		end;
+		nil;
+	end,
+
+	// the slots synced: the entry's own, not the system's (_uniqueID,
+	// _modTime ...) nor sync's
+	Synced: func(slot)
+	begin
+		local name := SPrintObject(slot);
+		not (StrLen(name) > 0 and name[0] = $_) and slot <> 'syncID and slot <> 'syncConflict;
+	end,
+
+	// --- the state ----------------------------------------------------
+
+	Soup: func()
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(stateSoup) then
+			store:CreateSoupXmit(stateSoup, [], nil);
+		store:GetSoup(stateSoup);
+	end,
+
+	// {meta, records: {syncID: record}}
+	Load: func()
+	begin
+		local meta := nil;
+		local records := {};
+		local cursor := :Soup():Query({});
+		local e := cursor:Entry();
+		while e do begin
+			if e.kind = 'device then meta := e
+			else if e.kind = 'record and IsString(e.syncID) then records.(Intern(e.syncID)) := e;
+			e := cursor:Next();
+		end;
+		if not meta then begin
+			meta := {kind: 'device, device: HostSyncRandomID(), last: nil, seen: {}, syncs: 0};
+			:Soup():Add(meta);
+			Print("sync: this device is " & meta.device);
+		end;
+		device := meta.device;
+		if not last then last := meta.last;
+		{meta: meta, records: records};
+	end,
+
+	MaxStamp: func(record)
+	begin
+		local most := if IsString(record.deleteStamp) then record.deleteStamp else "";
+		foreach slot, s in record.slots do
+			if :Later(s.stamp, most) then most := s.stamp;
+		most;
+	end,
+
+	// --- the scan: local changes stamped -----------------------------
+
+	// ==> how many entries changed here since the last sync
+	Scan: func(state)
+	begin
+		local changed := 0;
+		local present := {};
+		foreach soupName in soups do begin
+			local soup := GetUnionSoup(soupName);
+			if soup then begin
+				local cursor := soup:Query({});
+				local e := cursor:Entry();
+				while e do begin
+					if not IsString(e.syncID) then begin
+						e.syncID := HostSyncRandomID();
+						EntryChange(e);
+					end;
+					local key := Intern(e.syncID);
+					present.(key) := true;
+					local record := state.records.(key);
+					if not record then begin
+						record := {kind: 'record, syncID: e.syncID, soup: soupName, deleted: nil, slots: {}};
+						:Soup():Add(record);
+						state.records.(key) := record;
+					end;
+					if :ScanEntry(e, record) then begin
+						EntryChange(record);
+						changed := changed + 1;
+					end;
+					e := cursor:Next();
+				end;
+			end;
+		end;
+		// records whose entries are gone: deleted here
+		foreach key, record in state.records do
+			if not record.deleted and not present.(key) and :IsSyncedSoup(record.soup) then begin
+				record.deletePrev := :MaxStamp(record);
+				record.deleteStamp := :NewStamp();
+				record.deleted := true;
+				EntryChange(record);
+				changed := changed + 1;
+			end;
+		changed;
+	end,
+
+	IsSyncedSoup: func(name)
+	begin
+		foreach s in soups do if StrEqual(s, name) then return true;
+		nil;
+	end,
+
+	// ==> whether a slot of the entry differs from the record's
+	ScanEntry: func(e, record)
+	begin
+		local any := nil;
+		if record.deleted then begin
+			// (here again: the entry was made again by hand, or kept)
+			record.deleted := nil;
+			any := true;
+		end;
+		foreach slot, value in e do
+			if :Synced(slot) then begin
+				local s := record.slots.(slot);
+				if not s or not :Same(s.value, value) then begin
+					record.slots.(slot) := {stamp: :NewStamp(), prev: if s then s.stamp else "", value: DeepClone(value)};
+					any := true;
+				end;
+			end;
+		// slots taken out of the entry
+		foreach slot, s in record.slots do
+			if s.value and not HasSlot(e, slot) then begin
+				record.slots.(slot) := {stamp: :NewStamp(), prev: s.stamp, value: nil};
+				any := true;
+			end;
+		any;
+	end,
+
+	// --- the merge: another device's records -------------------------
+
+	// the entry of a synced id, nil when there is none here
+	EntryOf: func(record)
+	begin
+		local soup := GetUnionSoup(record.soup);
+		if not soup then return nil;
+		local cursor := soup:Query({});
+		local e := cursor:Entry();
+		while e do begin
+			if IsString(e.syncID) and StrExactCompare(e.syncID, record.syncID) = 0 then return e;
+			e := cursor:Next();
+		end;
+		nil;
+	end,
+
+	// ==> what it did: nil, 'added, 'changed, 'deleted, 'kept
+	Merge: func(state, theirs)
+	begin
+		foreach slot, s in theirs.slots do :Observe(s.stamp);
+		:Observe(theirs.deleteStamp);
+		local key := Intern(theirs.syncID);
+		local mine := state.records.(key);
+		if not mine then begin
+			local record := {kind: 'record, syncID: theirs.syncID, soup: theirs.soup, deleted: theirs.deleted,
+				deleteStamp: theirs.deleteStamp, deletePrev: theirs.deletePrev, slots: DeepClone(theirs.slots)};
+			:Soup():Add(record);
+			state.records.(key) := record;
+			if theirs.deleted then return nil;
+			:MakeEntry(record);
+			return 'added;
+		end;
+		// a delete against a change: the change wins
+		if theirs.deleted and not mine.deleted then begin
+			if :Later(:MaxStamp(mine), theirs.deletePrev) then begin
+				:MergeSlots(mine, theirs, nil);
+				return 'kept;
+			end;
+			mine.deleted := true;
+			mine.deleteStamp := theirs.deleteStamp;
+			mine.deletePrev := theirs.deletePrev;
+			EntryChange(mine);
+			local e := :EntryOf(mine);
+			if e then EntryRemoveFromSoupXmit(e, appSymbol);
+			return 'deleted;
+		end;
+		if mine.deleted and not theirs.deleted then begin
+			if not :Later(:MaxStamp(theirs), mine.deletePrev) then return nil;
+			mine.deleted := nil;
+			:MergeSlots(mine, theirs, nil);
+			:MakeEntry(mine);
+			return 'added;
+		end;
+		if mine.deleted then return nil;
+		if :MergeSlots(mine, theirs, true) then 'changed else nil;
+	end,
+
+	// their slots into my record (and the entry, when `apply`): ==> whether any changed
+	MergeSlots: func(mine, theirs, apply)
+	begin
+		local changes := {};
+		local conflicts := {};
+		local any := nil;
+		foreach slot, t in theirs.slots do begin
+			local m := mine.slots.(slot);
+			if not m then begin
+				changes.(slot) := t;
+				any := true;
+			end
+			else if :Later(t.stamp, m.stamp) then begin
+				// theirs wins; mine kept beside it when both changed it
+				if :Later(m.stamp, t.prev) and not :Same(m.value, t.value) then
+					conflicts.(slot) := {value: m.value, stamp: m.stamp};
+				changes.(slot) := t;
+				any := true;
+			end
+			else if :Later(m.stamp, t.stamp) then begin
+				if :Later(t.stamp, m.prev) and not :Same(m.value, t.value) then
+					conflicts.(slot) := {value: t.value, stamp: t.stamp};
+			end;
+		end;
+		foreach slot, t in changes do mine.slots.(slot) := DeepClone(t);
+		if any or Length(conflicts) > 0 then EntryChange(mine);
+		if not apply then return any;
+		local e := :EntryOf(mine);
+		if not e then return any;
+		local touched := nil;
+		foreach slot, t in changes do begin
+			if t.value then e.(slot) := DeepClone(t.value) else RemoveSlot(e, slot);
+			touched := true;
+		end;
+		if Length(conflicts) > 0 then begin
+			if not e.syncConflict then e.syncConflict := {};
+			foreach slot, c in conflicts do e.syncConflict.(slot) := c;
+			touched := true;
+			Print("sync: a conflict in " & mine.soup & ", kept in syncConflict");
+		end;
+		if touched then EntryChangeXmit(e, appSymbol);
+		any;
+	end,
+
+	MakeEntry: func(record)
+	begin
+		local frame := {syncID: record.syncID};
+		foreach slot, s in record.slots do
+			if s.value then frame.(slot) := DeepClone(s.value);
+		local soup := GetUnionSoup(record.soup);
+		if soup then soup:AddToDefaultStoreXmit(frame, appSymbol);
+	end,
+
+	// --- a sync -------------------------------------------------------
+
+	// ==> {scanned, read, added, changed, deleted, kept, wrote}
+	Sync: func()
+	begin
+		pending := nil;
+		local folder := HostSyncFolder();
+		if not folder then return {error: "the sync folder cannot be made"};
+		local state := :Load();
+		local report := {scanned: :Scan(state), read: 0, added: 0, changed: 0, deleted: 0, kept: 0, wrote: nil};
+		foreach name in HostSyncList() do
+			if not StrEqual(name, device & ".nsof") then begin
+				local binary := HostSyncRead(name);
+				local theirs := nil;
+				if binary then
+					try theirs := Translate(binary, 'unflattenNoCode, nil, nil) onexception |evt.ex| do theirs := nil;
+				if IsFrame(theirs) and IsArray(theirs.records) and IsString(theirs.device)
+				   and not (state.meta.seen.(Intern(theirs.device)) and StrExactCompare(state.meta.seen.(Intern(theirs.device)), theirs.written) = 0) then begin
+					report.read := report.read + 1;
+					foreach r in theirs.records do begin
+						local did := :Merge(state, r);
+						if did then report.(did) := report.(did) + 1;
+					end;
+					state.meta.seen.(Intern(theirs.device)) := theirs.written;
+				end;
+			end;
+		// this device's whole state
+		local records := [];
+		foreach key, r in state.records do
+			AddArraySlot(records, {syncID: r.syncID, soup: r.soup, deleted: r.deleted, deleteStamp: r.deleteStamp,
+				deletePrev: r.deletePrev, slots: r.slots});
+		local written := :NewStamp();
+		local flat := Translate({device: device, written: written, records: records}, 'flattener, nil, nil);
+		report.wrote := HostSyncWrite(device & ".nsof", flat);
+		state.meta.last := last;
+		state.meta.syncs := state.meta.syncs + 1;
+		state.meta.lastSync := Time();
+		EntryChange(state.meta);
+		lastReport := report;
+		Print("sync: scanned " & report.scanned & " changed here, read " & report.read & " devices: "
+			& report.added & " added, " & report.changed & " changed, " & report.deleted & " deleted, "
+			& report.kept & " kept against a delete; wrote " & Length(records) & " records");
+		report;
+	end,
+
+	// a synced soup changed: a sync soon (not for sync's own changes)
+	SoupChanged: func(soupName, appSym, changeType, changeData)
+	begin
+		if appSym = appSymbol or pending or not HostFeatureOn('sync) then return;
+		pending := true;
+		local me := self;
+		AddDelayedCall(func() if me.pending then try me:Sync() onexception |evt.ex| do me.pending := nil,
+			nil, delayMilliseconds);
+	end,
+
+	// the other devices' changes looked for every so often
+	generation: 0,
+	Every: func(gen)
+	begin
+		if gen <> generation or not HostFeatureOn('sync) then return;
+		try :Sync() onexception |evt.ex| do Print("sync: could not sync");
+		local me := self;
+		AddDelayedCall(func() me:Every(gen), nil, Max(10, HostSyncEvery()) * 1000);
+	end,
+
+	Start: func()
+	begin
+		if not HostFeatureOn('sync) then
+			return :Stop();
+		local me := self;
+		foreach s in soups do
+			RegSoupChange(s, appSymbol, func(soupName, appSym, changeType, changeData)
+				me:SoupChanged(soupName, appSym, changeType, changeData));
+		generation := generation + 1;
+		local gen := generation;
+		// (later: a soup made while the system is starting is refused)
+		if HostSyncEvery() > 0 then
+			AddDelayedCall(func() me:Every(gen), nil, Max(10, HostSyncEvery()) * 1000);
+	end,
+
+	Stop: func()
+	begin
+		foreach s in soups do UnRegSoupChange(s, appSymbol);
+		pending := nil;
+		generation := generation + 1;
+	end
+}

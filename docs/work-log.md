@@ -9,6 +9,22 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - sync through a folder
+
+On branch `modern`, behind the Host panel's "Sync" (`NEWTON_SYNC`):
+Newtons agree on Names, Notes, Dates and To Do through a folder
+(`src/host/HostSync.ns`, `host/HostSync.cpp`). Each entry gets a `syncID`.
+Stamps are a hybrid logical clock written as a sortable string, so no
+wide integers are needed. Each device keeps per-slot records, finds its
+own changes by scanning, and writes its whole state as NSOF; the merge is
+of states. The page's proposed conflict rule is taken: slot by slot later
+wins, with the loser kept in `syncConflict`, and a change wins over a
+delete. ctests `host.NewtonSync.A1` ... `.A3` run two devices in turn
+through one folder, one with a clock a day slow. Found on the way: a ctest
+store in a folder its setup test removes is never written; the
+Setup-made entries of two devices are new to each other (recorded as NOT
+YET).
+
 ## 2026-11-12: Modern additions - Internet mail
 
 On branch `modern`, behind the Host panel's "Internet mail"

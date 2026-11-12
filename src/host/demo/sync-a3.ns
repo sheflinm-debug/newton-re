@@ -1,0 +1,10 @@
+// Sync, step A3 (sync-common.ns): the note A deleted comes back with B's edit.
+HostInclude("sync-common.ns");
+
+call syRun with ("a3", func() begin
+  local report := call sySync with ();
+  local note := call syNote with ();
+  Print("sync-a3: added " & report.added & ", the note back " & call syYesNo with (note)
+    & (if note then ", reading \"" & note.data[0].text & "\"" else ""));
+  Print("sync-a3: Alice " & call syAlice with ());
+end);

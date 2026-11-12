@@ -199,6 +199,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostMail.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostSync.ns, sync between Newtons (docs/modern/sync.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostSyncSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostSync.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostSyncSource.cpp -DNAME=gHostSyncSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostSync.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -232,10 +240,11 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                HostFiles.cpp HostFilesOS.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp
                HostPictures.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp
                HostMail.cpp HostMailEngine.cpp HostMailFormat.cpp HostMailKeys.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp
+               HostSync.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostSyncSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial hal_host_image)
 if(WIN32)
-    target_link_libraries(newton PRIVATE advapi32)		# (the mail passwords' Credential Manager, HostMailKeys.cpp)
+    target_link_libraries(newton PRIVATE advapi32 bcrypt)		# (the mail passwords' Credential Manager, HostMailKeys.cpp; sync's random ids, HostFilesOS.cpp)
 endif()
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
 install(TARGETS newton DESTINATION bin)
@@ -1650,6 +1659,52 @@ if(Python3_EXECUTABLE)
                          FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
   endforeach()
 endif()
+
+# sync between Newtons (docs/modern/sync.md; host/HostSync.ns): two devices,
+# A and B - two stores - and one sync folder, five runs one after another,
+# each needing the one before (demo/sync-common.ns says what each does);
+# the folder and stores emptied first; B2's clock a day slow
+add_test(NAME host.NewtonSync.clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/sync-test ${CMAKE_BINARY_DIR}/sync-a.store ${CMAKE_BINARY_DIR}/sync-b.store)
+set_tests_properties(host.NewtonSync.clean PROPERTIES FIXTURES_SETUP sync_s0)
+set(sync_steps a1 b1 a2 b2 a3)
+set(sync_pass_a1 "sync-a1: HostFeatureOn true.*sync-a1: wrote its state true, 1 device file in the folder.*sync-a1: done")
+set(sync_pass_b1 "sync-b1: from A, added [0-9]+: Alice true .phone 111, company Acme, address none, conflict none., the note true.*sync-b1: changed here 2, 2 device files in the folder.*sync-b1: done")
+set(sync_pass_a2 "a conflict in Names, kept in syncConflict.*sync-a2: changed here 2, from B changed 1 and added [0-9]+.*sync-a2: Alice phone 222, company Acme A, address 1 Main St, conflict Acme B.*sync-a2: Bob true, the note nil.*sync-a2: done")
+set(sync_pass_b2 "sync-b2: kept against a delete 1, the note true, changed from A 1.*sync-b2: Alice phone 222, company Acme A, address 1 Main St, conflict Acme B.*sync-b2: done")
+set(sync_pass_a3 "sync-a3: added 1, the note back true, reading .Shared note, edited on B..*sync-a3: Alice phone 222, company Acme A, address 1 Main St, conflict Acme B.*sync-a3: done")
+set(sync_before sync_s0)
+set(sync_index 0)
+foreach(step ${sync_steps})
+  math(EXPR sync_index "${sync_index} + 1")
+  string(SUBSTRING ${step} 0 1 device)
+  string(TOUPPER ${step} upper)
+  set(erase "")
+  if(step STREQUAL "a1" OR step STREQUAL "b1")
+    set(erase --erase)
+  endif()
+  set(offset 0)
+  if(step STREQUAL "b2")
+    set(offset -86400)
+  endif()
+  add_test(NAME host.NewtonSync.${upper} COMMAND newton --display 320x480 --headless 120
+           --store ${CMAKE_BINARY_DIR}/sync-${device}.store ${erase}
+           --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/sync-${step}.ns
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+  set_tests_properties(host.NewtonSync.${upper} PROPERTIES TIMEOUT 180
+                       FIXTURES_REQUIRED ${sync_before} FIXTURES_SETUP sync_s${sync_index}
+                       ENVIRONMENT "NEWTON_SYNC=1;NEWTON_SYNC_EVERY=0;NEWTON_SYNC_FOLDER=${CMAKE_BINARY_DIR}/sync-test/folder;NEWTON_SYNC_CLOCK_OFFSET=${offset}"
+                       PASS_REGULAR_EXPRESSION "${sync_pass_${step}}"
+                       FAIL_REGULAR_EXPRESSION "waited in vain|did not start|could not sync")
+  set(sync_before sync_s${sync_index})
+endforeach()
+add_test(NAME host.NewtonSync.off COMMAND newton --display 320x480 --headless 120
+         --store ${CMAKE_BINARY_DIR}/sync-off.store --erase
+         --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/sync-a1.ns
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonSync.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_SYNC=0;NEWTON_SYNC_FOLDER=${CMAKE_BINARY_DIR}/sync-off-folder"
+                     PASS_REGULAR_EXPRESSION "sync-a1: HostFeatureOn nil.*sync-a1: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 
 # checkboxes in a note (docs/modern/structure.md; views/MarginMarks.h): the
 # caret's pop-up makes a paragraph a to-do item, its box ticked and

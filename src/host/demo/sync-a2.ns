@@ -1,0 +1,15 @@
+// Sync, step A2 (sync-common.ns): A adds Alice's address and changes her
+// company (B changed it too), deletes the note; synced.
+HostInclude("sync-common.ns");
+
+call syRun with ("a2", func() begin
+  local alice := call syCard with ("Alice");
+  alice.address := "1 Main St";
+  alice.company := "Acme A";
+  EntryChangeXmit(alice, sySym);
+  EntryRemoveFromSoupXmit(call syNote with (), sySym);
+  local report := call sySync with ();
+  Print("sync-a2: changed here " & report.scanned & ", from B changed " & report.changed & " and added " & report.added);
+  Print("sync-a2: Alice " & call syAlice with ());
+  Print("sync-a2: Bob " & call syYesNo with (call syCard with ("Bob")) & ", the note " & call syYesNo with (call syNote with ()));
+end);

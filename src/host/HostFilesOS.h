@@ -29,6 +29,13 @@ int		HostFilesRename(const char* from, const char* to);
 // ==> 0 nothing there, 1 a file, 2 a directory.
 int		HostFilesKind(const char* path);
 
+// A file renamed over one that may be there (an atomic replace where the
+// host has one).  ==> 0, or -1.
+int		HostFilesReplace(const char* from, const char* to);
+
+// Bytes from the system's secure random generator.  ==> 0, or -1.
+int		HostFilesRandom(unsigned char* bytes, size_t count);
+
 // The entries of a directory, without "." and ".." and hidden ones (a
 // leading '.').  ==> how many were put in `out` (at most `max`), -1 when it
 // cannot be read.

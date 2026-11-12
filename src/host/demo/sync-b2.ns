@@ -1,0 +1,13 @@
+// Sync, step B2 (sync-common.ns): B, its clock a day slow, edits the note A
+// deleted; synced: the edit wins.
+HostInclude("sync-common.ns");
+
+call syRun with ("b2", func() begin
+  local note := call syNote with ();
+  note.data[0].text := "Shared note, edited on B";
+  EntryChangeXmit(note, sySym);
+  local report := call sySync with ();
+  Print("sync-b2: kept against a delete " & report.kept & ", the note " & call syYesNo with (call syNote with ())
+    & ", changed from A " & report.changed);
+  Print("sync-b2: Alice " & call syAlice with ());
+end);

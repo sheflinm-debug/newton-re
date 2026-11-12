@@ -28,6 +28,7 @@ enum HostFeatureId
 	kFeatureFiles,			// docs/modern/files.md: the Files application over a folder of the host's
 	kFeatureGallery,		// docs/modern/camera-gallery.md: the Gallery over the pictures, and the Camera
 	kFeatureMail,			// docs/modern/transports.md: Internet mail, a transport of the In/Out Box
+	kFeatureSync,			// docs/modern/sync.md: Newtons agreeing on their data through a folder
 	kFeatureCount
 };
 
@@ -35,21 +36,21 @@ enum HostFeatureId
 inline const char*
 HostFeatureSetting(int id)
 {
-	static const char* const kNames[kFeatureCount] = { "marking", "structure", "permissions", "assistant", "files", "gallery", "mail" };
+	static const char* const kNames[kFeatureCount] = { "marking", "structure", "permissions", "assistant", "files", "gallery", "mail", "sync" };
 	return kNames[id];
 }
 
 inline const char*
 HostFeatureVariable(int id)
 {
-	static const char* const kNames[kFeatureCount] = { "NEWTON_MARKING", "NEWTON_STRUCTURE", "NEWTON_PERMISSIONS", "NEWTON_ASSISTANT", "NEWTON_FILES", "NEWTON_GALLERY", "NEWTON_MAIL" };
+	static const char* const kNames[kFeatureCount] = { "NEWTON_MARKING", "NEWTON_STRUCTURE", "NEWTON_PERMISSIONS", "NEWTON_ASSISTANT", "NEWTON_FILES", "NEWTON_GALLERY", "NEWTON_MAIL", "NEWTON_SYNC" };
 	return kNames[id];
 }
 
 inline int*
 HostFeatureStates(void)
 {
-	static int sStates[kFeatureCount] = { -1, -1, -1, -1, -1, -1, -1 };		// -1: the environment not yet read
+	static int sStates[kFeatureCount] = { -1, -1, -1, -1, -1, -1, -1, -1 };		// -1: the environment not yet read
 	return sStates;
 }
 
@@ -58,7 +59,7 @@ HostFeatureStates(void)
 inline bool
 HostFeatureFromEnvironment(int id)
 {
-	static int sSaid[kFeatureCount] = { -1, -1, -1, -1, -1, -1, -1 };
+	static int sSaid[kFeatureCount] = { -1, -1, -1, -1, -1, -1, -1, -1 };
 	if (sSaid[id] < 0)
 	{
 		const char* asked = getenv(HostFeatureVariable(id));

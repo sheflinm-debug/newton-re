@@ -71,9 +71,11 @@ Files soup's pictures, a fake camera, a PNG and baseline JPEG decoder of
 our own - `camera-gallery.md`); the Files transport, "Save to Files" in
 every application's Action button, and Internet mail - a main account
 and secondary ones any package can add, received mail in the In Box
-(`transports.md`); next sync, web and malleable in the README's order
-(the Mesh, Another Newton and Share transports, and STARTTLS/OAuth for
-the large mail providers, still open), with the file store proper (`TFileStore`, drives as
+(`transports.md`); sync between Newtons through a folder (`sync.md`,
+the page's proposed conflict rule); next web and malleable in the README's
+order (the Mesh, Another Newton and Share transports, STARTTLS/OAuth for
+the large mail providers, and sync's direct carrier, pairing and
+encryption, still open), with the file store proper (`TFileStore`, drives as
 stores), foreign formats and a real camera still open.  The owner's open question: Newton as an OS over a Linux kernel
 or on bare metal, and the first device - `modernization-plan.md` is to be
 reworked around the answer.

@@ -1,0 +1,12 @@
+// Sync, step A1 (sync-common.ns): Alice's card and a note made on A; synced.
+HostInclude("sync-common.ns");
+
+call syRun with ("a1", func() begin
+  GetUnionSoup("Names"):AddToDefaultStoreXmit({class: 'person, cardType: 0,
+    name: {class: 'person, first: "Alice", last: "Ng"}, sorton: "Ng Alice", phones: ["111"], company: "Acme"}, sySym);
+  local note := GetDataDefs('paperroll):MakeNewEntry();
+  note.data := [{viewStationery: 'para, viewBounds: SetBounds(0, 0, 230, 24), text: "Shared note"}];
+  GetUnionSoup("Notes"):AddToDefaultStoreXmit(note, sySym);
+  local report := call sySync with ();
+  Print("sync-a1: wrote its state " & call syYesNo with (report.wrote) & ", " & Length(HostSyncList()) & " device file in the folder");
+end);

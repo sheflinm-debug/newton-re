@@ -1,0 +1,93 @@
+// Sync between Newtons (docs/modern/sync.md; host/HostSync.ns): what the
+// steps sync-a1.ns, sync-b1.ns, sync-a2.ns, sync-b2.ns and sync-a3.ns share.
+// Two devices, A and B, are two newton runs with stores of their own
+// (build/sync-a.store, build/sync-b.store) and one sync folder
+// (NEWTON_SYNC_FOLDER), run one after another (ctests host.NewtonSync.A1 ...
+// .A3, each needing the one before):
+//
+//   A1  Alice's card (phone 111, company Acme) and a note made; synced.
+//   B1  a new device: both arrive; Alice's phone 222 and company "Acme B",
+//       and Bob's card; synced.
+//   A2  Alice's address added and company "Acme A" - the company changed on
+//       both, address and phone on one each - and the note deleted; synced:
+//       phone 222, the address, company "Acme A" (later) with "Acme B" kept
+//       in syncConflict, Bob here, the note gone.
+//   B2  B's clock a day slow (NEWTON_SYNC_CLOCK_OFFSET): the note edited,
+//       then synced - the edit wins against A's delete, though B's clock
+//       says it is older; Alice as A has her, the conflict here too.
+//   A3  the note comes back to A with B's text.
+//
+//   NEWTON_SYNC=1 NEWTON_SYNC_EVERY=0 NEWTON_SYNC_FOLDER=build/sync-demo
+//       build/host/host/newton --store build/sync-a.store --erase
+//       --headless 120 --script src/host/demo/sync-a1.ns       (then b1, a2, ...)
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+syName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+sySym := '|SyncDemo:host|;
+
+syYesNo := func(x) if x then "true" else "nil";
+
+// the system ready: Setup gone through on a new store, the Notepad open on one used before
+syStart := func(andThen)
+  call waitFor with ("sync: the system", func() (GetRoot().setup and GetRoot().setup.viewCObject)
+      or (GetRoot().paperroll and GetRoot().paperroll.viewCObject), func() begin
+      if GetRoot().setup and GetRoot().setup.viewCObject then
+        call walkSetup with (syName, func() AddDelayedCall(andThen, nil, 1000))
+      else
+        AddDelayedCall(andThen, nil, 1000);
+    end, 60);
+
+syEntries := func(soupName) begin
+  local out := [];
+  local soup := GetUnionSoup(soupName);
+  if soup then begin
+    local cursor := soup:Query({});
+    local e := cursor:Entry();
+    while e do begin
+      AddArraySlot(out, e);
+      e := cursor:Next();
+    end;
+  end;
+  out;
+end;
+
+syCard := func(first) begin
+  local found := nil;
+  foreach e in call syEntries with ("Names") do
+    if IsFrame(e.name) and IsString(e.name.first) and StrEqual(e.name.first, first) then found := e;
+  found;
+end;
+
+syNote := func() begin
+  local found := nil;
+  foreach e in call syEntries with ("Notes") do
+    if IsArray(e.data) and Length(e.data) > 0 and IsString(e.data[0].text) and BeginsWith(e.data[0].text, "Shared note") then found := e;
+  found;
+end;
+
+sySync := func() GetGlobalVar('|HostSync:host|):Sync();
+
+syAlice := func() begin
+  local a := call syCard with ("Alice");
+  if not a then return "no Alice";
+  "phone " & (if IsArray(a.phones) and Length(a.phones) > 0 then a.phones[0] else "none")
+    & ", company " & (if IsString(a.company) then a.company else "none")
+    & ", address " & (if IsString(a.address) then a.address else "none")
+    & ", conflict " & (if a.syncConflict and a.syncConflict.company then a.syncConflict.company.value else "none");
+end;
+
+syDone := func(name) begin
+  Print("sync-" & name & ": done");
+  HostQuit();
+end;
+
+// the step, unless sync is off
+syRun := func(name, step)
+  call syStart with (func() begin
+      local on := HostFeatureOn('sync);
+      Print("sync-" & name & ": HostFeatureOn " & call syYesNo with (on));
+      if not on then return call syDone with (name);
+      call step with ();
+      call syDone with (name);
+    end);

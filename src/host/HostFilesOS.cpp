@@ -13,6 +13,7 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#include <bcrypt.h>
 #else
 #include <dirent.h>
 #include <sys/stat.h>
@@ -111,6 +112,24 @@ HostFilesRename(const char* from, const char* to)
 	free(a);
 	free(b);
 	return moved ? 0 : -1;
+}
+
+int
+HostFilesReplace(const char* from, const char* to)
+{
+	wchar_t* a = Wide(from);
+	wchar_t* b = Wide(to);
+	BOOL moved = MoveFileExW(a, b, MOVEFILE_REPLACE_EXISTING);
+	free(a);
+	free(b);
+	return moved ? 0 : -1;
+}
+
+int
+HostFilesRandom(unsigned char* bytes, size_t count)
+{
+	// (the system's generator: BCryptGenRandom, from bcrypt)
+	return BCryptGenRandom(NULL, bytes, (ULONG) count, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
 }
 
 int
@@ -222,6 +241,23 @@ HostFilesRename(const char* from, const char* to)
 	if (stat(to, &st) == 0)
 		return -1;							// (rename would replace it)
 	return rename(from, to) == 0 ? 0 : -1;
+}
+
+int
+HostFilesReplace(const char* from, const char* to)
+{
+	return rename(from, to) == 0 ? 0 : -1;
+}
+
+int
+HostFilesRandom(unsigned char* bytes, size_t count)
+{
+	FILE* f = fopen("/dev/urandom", "rb");
+	if (f == NULL)
+		return -1;
+	size_t got = fread(bytes, 1, count, f);
+	fclose(f);
+	return got == count ? 0 : -1;
 }
 
 int
