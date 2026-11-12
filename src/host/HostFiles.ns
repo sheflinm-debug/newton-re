@@ -14,10 +14,25 @@
 // Markdown heading in bold) and opens the note in the Notepad.  The file
 // itself is left as it is; the note remembers it in `fromFile`.
 //
-// The first piece of files.md only: the folder is read when it is shown,
-// not presented as a store (TFileStore), so files are not entries, Find
-// does not find them and nothing is told when they change.  Other kinds
-// are listed but not opened.
+// Files as entries: every file under the folder is an entry of the soup
+// "Files" on the internal store - {class: 'file, name, path, kind, size,
+// modified, labels, disk, excerpt} - kept in step with the folder (Sync,
+// every few seconds, from HostFilesScan; a scan that changed anything
+// sends one 'whatThe notification).  Find finds them (RegFindApps; the
+// ROM's StandardFind over the soup, by name and, for a text file, by the
+// words of its first 2000 characters, `excerpt`).  An entry changed by
+// someone else - its name or path - renames or moves the file; an entry
+// removed by someone else moves the file to the hidden ".Trash" folder.
+// `disk` is where the file was last seen, so a change is done once
+// whatever order the deferred notifications and the scans come in.
+//
+// NOT YET (files.md): the entries are a soup of the internal store kept
+// in step, not a store of their own (TFileStore): their content is read
+// through the natives, not a binary paged from the file; the folder is
+// looked at every few seconds rather than watched (the host's change
+// notification); drives are not stores; labels are kept in the entry, not
+// beside the file; folders are not entries.  Other kinds are listed but
+// not opened.
 
 {
 	appSymbol: '|Files:host|,
@@ -77,6 +92,22 @@
 			listView := nil;
 			items := nil;
 		end,
+
+		// Find (RegFindApps): the ROM's own search of a soup
+		Find: func(what, results, scope, statusForm)
+			:StandardFind(what, "Files", results, statusForm, nil),
+
+		FindSoupExcerpt: func(entry, finder)
+			if StrLen(entry.path) > 0 then entry.name & "  (" & entry.path & ")" else entry.name,
+
+		// (the ROM's finder calls OpenTo, when there is one, instead of
+		// opening the application and calling ShowFoundItem: a text file's
+		// note is opened without the Files application over it)
+		OpenTo: func(entry, finder)
+			GetGlobalVar('|HostFiles:host|):OpenEntry(entry),
+
+		ShowFoundItem: func(entry, finder)
+			GetGlobalVar('|HostFiles:host|):OpenEntry(entry),
 
 		Relayout: func()
 		begin
@@ -362,12 +393,184 @@
 		nil;
 	end,
 
+	// --- the Files soup ------------------------------------------------
+
+	soupName: "Files",
+	pollMilliseconds: 3000,				// how often the folder is looked at
+	excerptChars: 2000,					// a text file's words Find searches
+	signature: nil,						// the tree's when it was last read
+	generation: 0,						// the watch loop's (a new one ends the old)
+
+	// a path and a name joined ("" the root)
+	Join: func(path, name)
+		if StrLen(path) > 0 then path & "/" & name else name,
+
+	// the folder of a path, and its last name
+	FolderOf: func(disk)
+	begin
+		for i := StrLen(disk) - 1 to 0 by -1 do
+			if disk[i] = $/ then return SubStr(disk, 0, i);
+		"";
+	end,
+
+	NameOf: func(disk)
+	begin
+		for i := StrLen(disk) - 1 to 0 by -1 do
+			if disk[i] = $/ then return SubStr(disk, i + 1, StrLen(disk) - i - 1);
+		disk;
+	end,
+
+	Soup: func()
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(soupName) then
+			store:CreateSoupXmit(soupName, [{structure: 'slot, path: 'path, type: 'string}], nil);
+		store:GetSoup(soupName);
+	end,
+
+	ExcerptOf: func(disk, name)
+	begin
+		local kind := :KindOf(name);
+		if kind and :IsText(kind) then HostFilesReadText(disk, excerptChars) else nil;
+	end,
+
+	// The soup brought into step with the folder.  ==> how many entries
+	// changed (nil: the folder had not changed).
+	Sync: func()
+	begin
+		local scan := HostFilesScan(signature);
+		if not scan then return nil;
+		local soup := :Soup();
+		// the entries there are, by where their files were
+		local known := {};
+		local cursor := soup:Query({});
+		local e := cursor:Entry();
+		local stale := [];
+		while e do begin
+			local key := if IsString(e.disk) then Intern(e.disk) else nil;
+			// (two the same but for case are one symbol: the second goes)
+			if not key or known.(key) then AddArraySlot(stale, e) else known.(key) := e;
+			e := cursor:Next();
+		end;
+		local changed := 0;
+		foreach f in scan.files do begin
+			local disk := :Join(f.path, f.name);
+			local key := Intern(disk);
+			e := known.(key);
+			if e then begin
+				RemoveSlot(known, key);
+				if e.size <> f.size or e.modified <> f.modified then begin
+					// (its name and path are left: a rename may be on its way)
+					e.size := f.size;
+					e.modified := f.modified;
+					e.excerpt := :ExcerptOf(disk, f.name);
+					EntryChange(e);
+					changed := changed + 1;
+				end;
+			end else begin
+				soup:Add({class: 'file, name: f.name, path: f.path, kind: :KindOf(f.name),
+					size: f.size, modified: f.modified, labels: nil, disk: disk,
+					excerpt: :ExcerptOf(disk, f.name)});
+				changed := changed + 1;
+			end;
+		end;
+		// files gone: their entries go
+		foreach slot, e in known do AddArraySlot(stale, e);
+		foreach e in stale do begin
+			EntryRemoveFromSoup(e);
+			changed := changed + 1;
+		end;
+		signature := scan.signature;
+		if changed > 0 then begin
+			Print("files: the Files soup brought into step, " & changed & " changed");
+			XmitSoupChange(soupName, appSymbol, 'whatThe, nil);
+			local base := GetRoot().(appSymbol);
+			if base and base.viewCObject then base:Reload();
+		end;
+		changed;
+	end,
+
+	// a change to the soup made by someone else: done to the file
+	SoupChanged: func(soupName, appSym, changeType, changeData)
+	begin
+		if appSym = appSymbol then return;
+		if changeType = 'entryChanged and IsFrame(changeData) and IsString(changeData.disk) then begin
+			local e := changeData;
+			if not IsString(e.name) or StrLen(e.name) = 0 then return;
+			local want := :Join(if IsString(e.path) then e.path else "", e.name);
+			if StrEqual(want, e.disk) then return;
+			if HostFilesMove(e.disk, want) then begin
+				Print("files: " & e.disk & " moved to " & want);
+				e.disk := want;
+			end else begin
+				// (it could not be: the entry goes back to the file)
+				e.name := :NameOf(e.disk);
+				e.path := :FolderOf(e.disk);
+			end;
+			EntryChangeXmit(e, appSymbol);
+		end
+		else if changeType = 'entryRemoved and IsFrame(changeData) and IsFrame(changeData.entry) then begin
+			local disk := changeData.entry.disk;
+			if IsString(disk) and HostFilesExists(disk) = 'file then :MoveToTrash(disk);
+		end;
+	end,
+
+	// a file moved to ".Trash" (a number added when the name is taken there)
+	MoveToTrash: func(disk)
+	begin
+		local name := :NameOf(disk);
+		local dest := ".Trash/" & name;
+		local n := 2;
+		while HostFilesExists(dest) do begin
+			dest := ".Trash/" & NumberStr(n) & " " & name;
+			n := n + 1;
+		end;
+		if HostFilesMove(disk, dest) then Print("files: " & disk & " moved to the trash");
+	end,
+
+	// an entry opened: a note of a text file, else the folder it is in
+	OpenEntry: func(entry)
+	begin
+		local kind := :KindOf(entry.name);
+		local base := GetRoot().(appSymbol);
+		if kind and :IsText(kind) then begin
+			// (the Notepad is the backdrop: an application open hides it)
+			if base and base.viewCObject then base:Close();
+			return :OpenAsNote(entry.disk, entry.name, kind);
+		end;
+		if not base then return nil;
+		base:Open();
+		base:Show(entry.path);
+		base.status := entry.name & ": " & (if kind then kind else "a file") & ", no viewer yet";
+		if base.listView then base.listView:Dirty();
+		entry;
+	end,
+
+	// the folder looked at every few seconds while Files is on
+	Watch: func(gen)
+	begin
+		if gen <> generation or not HostFeatureOn('files) then return;
+		try :Sync() onexception |evt.ex| do
+			Print("files: the Files soup could not be brought into step");
+		local me := self;
+		AddDelayedCall(func() me:Watch(gen), nil, pollMilliseconds);
+	end,
+
 	Start: func()
 	begin
 		if not HostFeatureOn('files) then
 			return :Stop();
 		if not GetRoot().(appSymbol) then
 			GetRoot().(appSymbol) := BuildContext(app);
+		RegFindApps(appSymbol);
+		local me := self;
+		RegSoupChange(soupName, appSymbol, func(soupName, appSym, changeType, changeData)
+			me:SoupChanged(soupName, appSym, changeType, changeData));
+		generation := generation + 1;
+		signature := nil;
+		local gen := generation;
+		// (later: a soup made while the system is starting is refused)
+		AddDelayedCall(func() me:Watch(gen), nil, 2000);
 		if not :IconEntry() then begin
 			local extras := GetUnionSoup(@307.name);
 			if extras then
@@ -378,6 +581,10 @@
 
 	Stop: func()
 	begin
+		// (the soup is left; the next Start brings it into step)
+		generation := generation + 1;
+		UnRegFindApps(appSymbol);
+		UnRegSoupChange(soupName, appSymbol);
 		local e := :IconEntry();
 		if e then EntryRemoveFromSoupXmit(e, nil);
 		local base := GetRoot().(appSymbol);

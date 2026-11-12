@@ -19,7 +19,15 @@ struct HostFileInfo
 	int			folder;			// a directory
 	long long	size;			// bytes
 	long		modified;		// local time, minutes since 1 January 1904 (the Newton's Time())
+	long long	stamp;			// the modification time as finely as the host has it (for noticing changes)
 };
+
+// A file or directory renamed or moved (not over one that is there).
+// ==> 0, or -1.
+int		HostFilesRename(const char* from, const char* to);
+
+// ==> 0 nothing there, 1 a file, 2 a directory.
+int		HostFilesKind(const char* path);
 
 // The entries of a directory, without "." and ".." and hidden ones (a
 // leading '.').  ==> how many were put in `out` (at most `max`), -1 when it

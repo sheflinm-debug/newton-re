@@ -1,7 +1,9 @@
 # Files: real files as Newton entries, and viewing other systems' formats
 
-**Status: a proposal; a first piece built (2026-11-12) - the Files
-application over a host folder, text and Markdown made notes (State).** It assumes a host with a file system of its own
+**Status: a proposal; first pieces built (2026-11-12) - the Files
+application over a host folder, text and Markdown made notes; every file
+an entry of the `Files` soup, found by Find, renamed, moved and put in
+the trash from the soup (State).** It assumes a host with a file system of its own
 (`docs/modernization-plan.md`: a Linux kernel under the Newton, or any
 desktop host). Facts about third-party libraries here are from general
 knowledge, not checked for this page; licences in particular must be read
@@ -155,16 +157,52 @@ file's path in `fromFile`; the file is untouched). Natives
 climbs out (`..`) or names a drive is refused. Demo `src/host/demo/files.ns`,
 ctests `host.NewtonFiles` and `.off`.
 
-Not built: everything that makes files entries - `TFileStore`, the
-`Files` soup, Find over files, change notifications, renaming and moving
-and the trash from the Newton, drives as stores; arrivals landing in
-Downloads/Received; Newton data as files; the document service (level 2)
-and every reader beyond plain text.
+Files as entries (`HostFiles.ns`'s Sync, SoupChanged, OpenEntry): every
+file under the folder is an entry of the soup `Files` on the internal
+store - `{class: 'file, name, path, kind, size, modified, labels, disk,
+excerpt}`, an index on `path`. Hidden files and folders (a leading `.`)
+are not entries. Every three seconds `HostFilesScan(signature)` walks the
+tree (at most 5000 files, 16 folders deep) and answers nil when its
+signature - every name, size and modification time - is unchanged;
+otherwise the soup is brought into step (entries added, changed,
+removed, without a notification each) and one `'whatThe` is sent. Find
+finds files (`RegFindApps`; the application's `Find` is the ROM's own
+`StandardFind` over the soup): by name, and for a text file by the words
+of its first 2000 characters (`excerpt`). A found text file opens as a
+note (the application's `OpenTo`; without it the ROM's finder opens the
+Files application first, which would hide the Notepad). Changing an
+entry's `name` or `path` from another application (`EntryChangeXmit`
+with its own symbol) renames or moves the file (`HostFilesMove`, never
+over a file that is there; refused, the entry goes back);
+`EntryRemoveFromSoupXmit` moves the file to `.Trash`, a number added
+when the name is taken. `disk`, where the file was last seen, makes each
+change happen once in whatever order the deferred notifications and the
+scans come; a scan never changes an entry's name or path. The demo's
+second half and ctest `host.NewtonFiles` check each of these, Find
+through the Find slip itself.
+
+How these depart from the design above (NOT YET): the entries are a soup
+of the internal store kept in step, not a store of their own
+(`TFileStore`), so they are a copy of the listing and a file's content is
+read through the natives, not paged as a binary; the folder is looked at
+on a timer, not watched with the host's change notification; labels are
+kept in the entry, not beside the file; folders are not entries; when the
+feature is turned off the soup is left (the next start brings it into
+step); two files whose names differ only in case are one entry (the
+reconciliation keys entries by symbol); a change made with no application
+symbol is not seen (the ROM sends no notification for it).
+
+Not built: `TFileStore` and drives as stores; emptying the trash, and
+renaming, moving and new folders from the Files application itself;
+arrivals landing in Downloads/Received; Newton data as files; the
+document service (level 2) and every reader beyond plain text.
 
 Found on the way: the Notepad's notes are `class: 'paperroll`,
 `viewStationery: 'paperroll`, their paragraphs' fonts packed integers
 (18435, bold with 1 << 20) - a note made with `'paper` and a font frame
-opens empty.
+opens empty. `to` is a NewtonScript keyword: a local named `to` is a
+syntax error. The ROM's finder calls an owner's `OpenTo(entry, finder)`
+when it has one, instead of opening it and calling `ShowFoundItem`.
 
 ## Owner decisions
 

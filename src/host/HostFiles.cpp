@@ -21,6 +21,12 @@
 				  HostFilesWriteText(path, text) - a file made or replaced
 					  with the text (UTF-8, LF line ends).
 				  HostFilesMakeFolder(path).
+				  HostFilesScan(signature) - every file of the tree, for
+					  the Files soup; nil when nothing has changed since
+					  the signature given.
+				  HostFilesMove(from, to) - renamed or moved, never over
+					  a file that is there.
+				  HostFilesExists(path) - 'file, 'folder or nil.
 
 				A path is relative to the folder, names joined by "/"; one
 				that climbs out of it ("..") or names a drive is refused.
@@ -306,6 +312,185 @@ FHostFilesMakeFolder(RefArg /*rcvr*/, RefArg relative)
 }
 
 
+// --- the whole tree, for the Files soup ---------------------------------
+
+static const int kScanMostFiles = 5000;		// (a folder larger than this is listed in part)
+static const int kScanMostDepth = 16;
+
+struct ScanFile
+{
+	char*		folder;			// relative, "" the root (shared by a folder's files)
+	char		name[512];
+	long long	size;
+	long		modified;
+};
+
+struct Scan
+{
+	ScanFile*		files;
+	int				count;
+	unsigned long	signature;	// FNV-1a over every name, size and stamp
+};
+
+static void
+Mix(unsigned long* h, const void* bytes, size_t n)
+{
+	const unsigned char* p = (const unsigned char*) bytes;
+	for (size_t i = 0; i < n; i++)
+		*h = ((*h ^ p[i]) * 16777619UL) & 0xFFFFFFFFUL;
+}
+
+// (folders are kept in `folders` to be freed; each file points at its own)
+static void
+ScanFolder(Scan* scan, const char* relative, int depth, char*** folders, int* folderCount, int* folderRoom)
+{
+	if (depth > kScanMostDepth || scan->count >= kScanMostFiles)
+		return;
+	const char* root = FilesRoot();
+	char* full = (char*) malloc(strlen(root) + strlen(relative) + 2);
+	if (relative[0] == 0)
+		strcpy(full, root);
+	else
+		sprintf(full, "%s/%s", root, relative);
+	const int kMax = 2000;
+	HostFileInfo* infos = (HostFileInfo*) malloc(sizeof(HostFileInfo) * kMax);
+	int count = HostFilesListDir(full, infos, kMax);
+	free(full);
+	if (count <= 0)
+	{
+		free(infos);
+		return;
+	}
+	if (*folderCount == *folderRoom)
+	{
+		*folderRoom = *folderRoom * 2 + 16;
+		*folders = (char**) realloc(*folders, sizeof(char*) * (size_t) *folderRoom);
+	}
+	char* folder = (char*) malloc(strlen(relative) + 1);
+	strcpy(folder, relative);
+	(*folders)[(*folderCount)++] = folder;
+	Mix(&scan->signature, relative, strlen(relative) + 1);
+	// files first, then the folders under this one
+	for (int i = 0; i < count && scan->count < kScanMostFiles; i++)
+	{
+		if (infos[i].folder)
+			continue;
+		ScanFile* f = &scan->files[scan->count++];
+		f->folder = folder;
+		snprintf(f->name, sizeof(f->name), "%s", infos[i].name);
+		f->size = infos[i].size;
+		f->modified = infos[i].modified;
+		Mix(&scan->signature, f->name, strlen(f->name) + 1);
+		Mix(&scan->signature, &f->size, sizeof(f->size));
+		Mix(&scan->signature, &infos[i].stamp, sizeof(infos[i].stamp));
+	}
+	for (int i = 0; i < count; i++)
+	{
+		if (!infos[i].folder)
+			continue;
+		char* sub = (char*) malloc(strlen(relative) + strlen(infos[i].name) + 2);
+		if (relative[0] == 0)
+			strcpy(sub, infos[i].name);
+		else
+			sprintf(sub, "%s/%s", relative, infos[i].name);
+		ScanFolder(scan, sub, depth + 1, folders, folderCount, folderRoom);
+		free(sub);
+	}
+	free(infos);
+}
+
+
+// HostFilesScan(signature) - every file under the folder (not hidden ones,
+// nor what is in a hidden folder such as the trash, ".Trash"), unless the
+// tree's signature is still the one given: ==> nil, or {signature,
+// files: [{name, path, size, modified}]}, path the folder ("" the root).
+static Ref
+FHostFilesScan(RefArg /*rcvr*/, RefArg was)
+{
+	Scan scan;
+	scan.files = (ScanFile*) malloc(sizeof(ScanFile) * kScanMostFiles);
+	scan.count = 0;
+	scan.signature = 2166136261UL;
+	char** folders = NULL;
+	int folderCount = 0, folderRoom = 0;
+	ScanFolder(&scan, "", 0, &folders, &folderCount, &folderRoom);
+	long signature = (long) (scan.signature & 0x1FFFFFFF);	// (an integer the Newton can hold)
+	RefVar result;
+	if (!(ISINT(was) && RINT(was) == signature))
+	{
+		result = AllocateFrame();
+		SetFrameSlot(result, RefVar(Intern((char*) "signature")), RefVar(MAKEINT(signature)));
+		RefVar list(MakeArray(0));
+		RefVar nameSym(Intern((char*) "name")), pathSym(Intern((char*) "path")),
+			sizeSym(Intern((char*) "size")), modifiedSym(Intern((char*) "modified"));
+		RefVar path;
+		const char* pathOf = NULL;
+		for (int i = 0; i < scan.count; i++)
+		{
+			ScanFile* f = &scan.files[i];
+			if (f->folder != pathOf)
+			{
+				pathOf = f->folder;
+				path = StringOfUTF8(pathOf, (long) strlen(pathOf), 1024);
+			}
+			RefVar entry(AllocateFrame());
+			SetFrameSlot(entry, nameSym, RefVar(StringOfUTF8(f->name, (long) strlen(f->name), 512)));
+			SetFrameSlot(entry, pathSym, path);
+			SetFrameSlot(entry, sizeSym, RefVar(MAKEINT(f->size > 0x1FFFFFFF ? 0x1FFFFFFF : (long) f->size)));
+			SetFrameSlot(entry, modifiedSym, RefVar(MAKEINT(f->modified)));
+			AddArraySlot(list, entry);
+		}
+		SetFrameSlot(result, RefVar(Intern((char*) "files")), list);
+	}
+	for (int i = 0; i < folderCount; i++)
+		free(folders[i]);
+	free(folders);
+	free(scan.files);
+	return result;
+}
+
+
+// HostFilesMove(from, to) - a file or folder renamed or moved, the folders
+// above `to` made; never over one that is there.  ==> true, or nil.
+static Ref
+FHostFilesMove(RefArg /*rcvr*/, RefArg from, RefArg to)
+{
+	char* a = FullPath(from);
+	char* b = FullPath(to);
+	int err = -1;
+	if (a != NULL && b != NULL && strcmp(a, b) != 0 && strcmp(a, FilesRoot()) != 0)
+	{
+		char* parent = (char*) malloc(strlen(b) + 1);
+		strcpy(parent, b);
+		char* slash = strrchr(parent, '/');
+		if (slash != NULL)
+		{
+			*slash = 0;
+			HostFilesMakeDirs(parent);
+		}
+		free(parent);
+		err = HostFilesRename(a, b);
+		fprintf(stderr, "[files] %s %s -> %s\n", err == 0 ? "moved" : "could not move", a, b);
+	}
+	free(a);
+	free(b);
+	return MAKEBOOLEAN(err == 0);
+}
+
+
+// HostFilesExists(path) - ==> 'file, 'folder or nil.
+static Ref
+FHostFilesExists(RefArg /*rcvr*/, RefArg relative)
+{
+	char* full = FullPath(relative);
+	if (full == NULL)
+		return NILREF;
+	int kind = HostFilesKind(full);
+	free(full);
+	return kind == 1 ? Intern((char*) "file") : kind == 2 ? Intern((char*) "folder") : NILREF;
+}
+
+
 void
 HostInstallFiles(void)
 {
@@ -314,6 +499,9 @@ HostInstallFiles(void)
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesReadText")), RefVar(MakeCFunction((void*) FHostFilesReadText, 2, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesWriteText")), RefVar(MakeCFunction((void*) FHostFilesWriteText, 2, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesMakeFolder")), RefVar(MakeCFunction((void*) FHostFilesMakeFolder, 1, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesScan")), RefVar(MakeCFunction((void*) FHostFilesScan, 1, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesMove")), RefVar(MakeCFunction((void*) FHostFilesMove, 2, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesExists")), RefVar(MakeCFunction((void*) FHostFilesExists, 1, nil)));
 	newton_try
 	{
 		RefVar fn(ParseString(RefVar(MakeString(gHostFilesSource))));

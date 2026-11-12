@@ -94,11 +94,34 @@ HostFilesListDir(const char* dir, HostFileInfo* out, int max)
 		unsigned long long ft = ((unsigned long long) data.ftLastWriteTime.dwHighDateTime << 32) | data.ftLastWriteTime.dwLowDateTime;
 		time_t t = (time_t) (ft / 10000000ULL - 11644473600ULL);
 		info->modified = MinutesOfTime(t);
+		info->stamp = (long long) ft;
 		count++;
 	}
 	while (FindNextFileW(find, &data));
 	FindClose(find);
 	return count;
+}
+
+int
+HostFilesRename(const char* from, const char* to)
+{
+	wchar_t* a = Wide(from);
+	wchar_t* b = Wide(to);
+	BOOL moved = MoveFileExW(a, b, 0);		// (no MOVEFILE_REPLACE_EXISTING: never over a file)
+	free(a);
+	free(b);
+	return moved ? 0 : -1;
+}
+
+int
+HostFilesKind(const char* path)
+{
+	wchar_t* w = Wide(path);
+	DWORD attributes = GetFileAttributesW(w);
+	free(w);
+	if (attributes == INVALID_FILE_ATTRIBUTES)
+		return 0;
+	return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? 2 : 1;
 }
 
 long
@@ -185,10 +208,29 @@ HostFilesListDir(const char* dir, HostFileInfo* out, int max)
 		info->folder = S_ISDIR(st.st_mode);
 		info->size = (long long) st.st_size;
 		info->modified = MinutesOfTime(st.st_mtime);
+		info->stamp = (long long) st.st_mtime;
 		count++;
 	}
 	closedir(d);
 	return count;
+}
+
+int
+HostFilesRename(const char* from, const char* to)
+{
+	struct stat st;
+	if (stat(to, &st) == 0)
+		return -1;							// (rename would replace it)
+	return rename(from, to) == 0 ? 0 : -1;
+}
+
+int
+HostFilesKind(const char* path)
+{
+	struct stat st;
+	if (stat(path, &st) != 0)
+		return 0;
+	return S_ISDIR(st.st_mode) ? 2 : 1;
 }
 
 long

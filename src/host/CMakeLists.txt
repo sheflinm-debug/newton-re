@@ -1503,7 +1503,7 @@ endif()
 foreach(state 1 0)
   if(state)
     set(name host.NewtonFiles)
-    set(pass "HostFeatureOn true, the application true.*written true.*[.][.]/ listed nil.*the root holds Documents, Downloads, Music, Pictures, Received.*Documents holds Shopping.md, Markdown.*Documents/Shopping.md made a note of 3 paragraphs.*the note has 3 paragraphs: Shopping .bold yes., milk and eggs.*files: done")
+    set(pass "HostFeatureOn true, the application true.*written true.*[.][.]/ listed nil.*the root holds Documents, Downloads, Music, Pictures, Received.*Documents holds Shopping.md, Markdown.*Documents/Shopping.md made a note of 3 paragraphs.*the note has 3 paragraphs: Shopping .bold yes., milk and eggs.*Shopping.md is an entry: Markdown, 42 bytes, in Documents.*Plan.txt became an entry, the soup's watchers told .whatThe.*Find says One item was found.*Find opened Plan.txt as a note, Files in front of it nil.*on the disk Documents/Tester plan.txt true, Downloads/Plan.txt nil.*removed on the Newton, in the trash true, an entry nil.*files: done")
   else()
     set(name host.NewtonFiles.off)
     set(pass "HostFeatureOn nil, the application nil.*files: done")
@@ -1512,7 +1512,10 @@ foreach(state 1 0)
            --store ${CMAKE_BINARY_DIR}/files-${state}.store --erase
            --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/files.ns
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
-  set_tests_properties(${name} PROPERTIES TIMEOUT 180
+  # (the folder emptied first: the trash and the files of a last run go)
+  add_test(NAME ${name}.clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/files-test-${state})
+  set_tests_properties(${name}.clean PROPERTIES FIXTURES_SETUP files_clean_${state})
+  set_tests_properties(${name} PROPERTIES TIMEOUT 180 FIXTURES_REQUIRED files_clean_${state}
                        ENVIRONMENT "NEWTON_FILES=${state};NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/files-test-${state}"
                        PASS_REGULAR_EXPRESSION "${pass}"
                        FAIL_REGULAR_EXPRESSION "waited in vain|did not start")

@@ -9,6 +9,23 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - files as entries, found by Find
+
+On branch `modern`, with "Files" on: every file under the folder is an
+entry of the soup `Files` on the internal store, brought into step with
+the folder every three seconds (`HostFilesScan` answers nil when the
+tree's signature has not changed; a scan that changed anything sends one
+`'whatThe`). Find finds files by name and, for text, by the words of
+their first 2000 characters (the ROM's `StandardFind`; `RegFindApps`).
+An entry renamed or moved by another application moves the file; one
+removed moves the file to the hidden `.Trash`. Found on the way: `to` is
+a NewtonScript keyword (a local named `to` is a syntax error); the ROM's
+`XmitSoupChange` is deferred and the `Xmit` entry calls send nothing when
+the application symbol is nil, and an `'entryRemoved` change carries
+`{oldSoup, entry}`, not the entry; the ROM's finder opens the owner
+application before `ShowFoundItem` unless the owner has `OpenTo`, and an
+open application hides the Notepad (the backdrop).
+
 ## 2026-11-12: Modern additions - the Files application
 
 On branch `modern`, behind the Host panel's "Files" (`NEWTON_FILES`): the
