@@ -43,6 +43,7 @@ add_library(views STATIC
     Rerecognize.cpp
     CaretWriting.cpp
     MarginMarks.cpp
+    LiveDetails.cpp
     GaugeView.cpp
     PolygonView.cpp
     PolygonTraced.cpp

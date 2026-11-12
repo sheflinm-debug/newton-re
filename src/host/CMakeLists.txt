@@ -186,7 +186,7 @@ add_custom_command(
     VERBATIM)
 add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.cpp HostOrientation.cpp HostSettings.cpp HostFontProvider.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostSettingsSource.cpp HostWordEngines.cpp
-               HostMarks.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp
+               HostMarks.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp HostOpenURL.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial)
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
@@ -1458,6 +1458,21 @@ set_tests_properties(host.NewtonCheckboxes.off PROPERTIES TIMEOUT 180
                      ENVIRONMENT "NEWTON_STRUCTURE=0"
                      PASS_REGULAR_EXPRESSION "HostFeatureOn nil, the pop-up has 2 items.*a tap in the margin, the paragraph none.*checkboxes: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+
+# live details (docs/modern/structure.md; views/LiveDetails.h): a web
+# address and a telephone number in a note, a tap on each offering Open or
+# Call, handed to the device (printed: NEWTON_OPEN_URL=print); .off, no
+# pop-up
+add_test(NAME host.NewtonLiveDetails COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/livedetails.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonLiveDetails PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_STRUCTURE=1;NEWTON_OPEN_URL=print"
+                     PASS_REGULAR_EXPRESSION "open http://www.newton.org .not opened.*open tel:5551234567 .not opened.*the pop-up has 3 items, the first Open.*url www.newton.org -> Open.*a tap on the number, the first Call.*details: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+add_test(NAME host.NewtonLiveDetails.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/livedetails.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonLiveDetails.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_STRUCTURE=0;NEWTON_OPEN_URL=print"
+                     PASS_REGULAR_EXPRESSION "a tap on the address, no pop-up.*details: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start|open http")
 
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,

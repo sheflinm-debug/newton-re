@@ -355,6 +355,69 @@
 		f.check;
 	end,
 
+	// Live details (docs/modern/structure.md; views/LiveDetails.h): a tap
+	// on a web address, an e-mail address or a telephone number in a
+	// paragraph offers what can be done with it, in a pop-up at the tap.
+	DetailTapped: func(kind, detail, x, y)
+	begin
+		local choices := if kind = 'url then [{item: "Open", action: 'open}]
+			else if kind = 'email then [{item: "Mail", action: 'mail}]
+			else if kind = 'phone then
+				(if GetRoot().|Messages:host| then [{item: "Call", action: 'dial}, {item: "Text", action: 'text}]
+				 else [{item: "Call", action: 'dial}])
+			else [];
+		if Length(choices) = 0 then return nil;
+		local items := foreach c in choices collect c.item;
+		AddArraySlot(items, 'pickSeparator);
+		AddArraySlot(items, "Copy");
+		lastDetail := {kind: kind, detail: detail, choices: choices};
+		local me := self;
+		DoPopup(items, x, y, {pickActionScript: func(i) me:DetailPicked(i), pickCancelledScript: func() nil});
+		true;
+	end,
+
+	lastDetail: nil,
+
+	// what was chosen from a detail's pop-up done
+	DetailPicked: func(index)
+	begin
+		local d := lastDetail;
+		if not d then return nil;
+		local action := if index < Length(d.choices) then d.choices[index].action else 'copy;
+		if action = 'open then
+			HostOpenURL(if BeginsWith(d.detail, "www.") then "http://" & d.detail else d.detail)
+		else if action = 'mail then
+			HostOpenURL("mailto:" & d.detail)
+		else if action = 'dial then
+			HostOpenURL("tel:" & :Dialable(d.detail))
+		else if action = 'text then begin
+			local m := GetRoot().|Messages:host|;
+			if m then begin
+				m:Open();
+				m:Compose();
+				if m.toPicker then begin
+					m.toPicker.selected := [{name: d.detail, number: :Dialable(d.detail)}];
+					SetValue(m.toPicker, 'text, d.detail);
+				end;
+			end;
+		end else
+			// (the clipboard: as the ROM's Copy leaves text)
+			SetClipboard({types: [['text]], data: [[{text: d.detail}]]});
+		Print("details: " & d.kind & " " & d.detail & " -> " & action);
+		lastDetail := nil;
+		action;
+	end,
+
+	// a telephone number's digits (and a leading +)
+	Dialable: func(number)
+	begin
+		local out := "";
+		for i := 0 to StrLen(number) - 1 do
+			if (number[i] >= $0 and number[i] <= $9) or (i = 0 and number[i] = $+) then
+				out := out & number[i];
+		out;
+	end,
+
 	// one mark of the list taken off
 	Unmark: func(mark)
 	begin

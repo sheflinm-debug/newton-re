@@ -1,6 +1,6 @@
 # Structure and meaning recognised from what is written
 
-**Status: a first piece built (2026-11-12): checkboxes and lists in a plain note,
+**Status: a first piece built (2026-11-12): checkboxes, lists and live details in a plain note,
 behind the Host panel's "Checkboxes and lists" (`NEWTON_STRUCTURE=1`/`=0`
 overrides; `host/Features.h`). The rest is a proposal.**
 
@@ -29,7 +29,22 @@ overrides; `host/Features.h`). The rest is a proposal.**
   `.off`; pictures `build/checkboxes-offer.pgm`, `build/checkboxes.pgm`,
   `build/checkboxes-list.pgm`.
 
-Not built yet: a square or a dash *drawn* before a line (it needs the
+- **Live details:** a web address ("http://", "https://", "www."), an
+  e-mail address, or a telephone number (7 to 15 digits) in a paragraph's
+  text is underlined with a dotted line as the paragraph is drawn, and a
+  tap on it pops up what can be done: Open, Mail, or Call (and Text where
+  Messages is), and Copy (`views/LiveDetails.h`, `HostMarks.ns`'s
+  `DetailTapped`). Open, Mail and Call hand the address to the device - its
+  browser, mail program or telephone - through `HostOpenURL`, which passes
+  on only plain `http:`, `https:`, `mailto:` and `tel:` addresses
+  (`host/HostOpenURL.cpp`; `NEWTON_OPEN_URL=print` only prints). Nothing is
+  stored: the details are found again from the text each time. Demo
+  `src/host/demo/livedetails.ns`, ctests `host.NewtonLiveDetails` and
+  `.off`; `test_Views`' `TestLiveDetails` (the patterns).
+
+Not built yet: dates and times, postal addresses, names matching a Names
+card, Assistant sentences (the rest of the live-details table); a detail
+in an ink word's reading (only text); the `Links` soup. A square or a dash *drawn* before a line (it needs the
 stroke positions: the structure recogniser proper, below); a list item's
 level (a line begun further right); a new line after an item continuing
 the list; live details; headings, sums, tables, diagrams; a

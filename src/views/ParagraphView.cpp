@@ -62,6 +62,7 @@
 #include "host/RomBugs.h"
 #include "host/KeepInk.h"
 #include "MarginMarks.h"
+#include "LiveDetails.h"
 #include "InkReading.h"
 #include <string.h>
 
@@ -1513,6 +1514,7 @@ void
 TParagraphView::PostDraw(Rect& drawBounds)
 {
 	TView::PostDraw(drawBounds);
+	DrawDetails(this);				// DEVIATION (host, LiveDetails.h): live details underlined
 	Boolean pageDraws = false;
 	TView* hiliter = gRootView->fHiliter;
 	if (hiliter != nil)
@@ -2312,6 +2314,8 @@ TParagraphView::HandleTap(Point& pt)
 	// DEVIATION (host, MarginMarks.h): a paragraph of a page reaches into
 	// the page's margin, where its star or checkbox is drawn
 	if (fParent != nil && fParent->ClassID() == clEditView && TapMargin(fParent, pt))
+		return;
+	if (TapDetail(this, pt))		// DEVIATION (host, LiveDetails.h): a live detail offered
 		return;
 	RemoveAllHilites();
 	if (fFlags & (vReadOnly | vWriteProtected))

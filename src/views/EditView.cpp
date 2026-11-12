@@ -23,6 +23,7 @@
 #include "InkReading.h"
 #include "host/KeepInk.h"
 #include "MarginMarks.h"
+#include "LiveDetails.h"
 #include "StrokeBundle.h"
 #include "DrawShape.h"
 #include "Locale.h"			// GetPreference
@@ -1159,6 +1160,19 @@ TEditView::HandleTap(Point& pt)
 {
 	if (TapMargin(this, pt))		// DEVIATION (host, MarginMarks.h): a checkbox or a star in the margin
 		return;
+	// DEVIATION (host, LiveDetails.h): a tap on a live detail in one of the
+	// page's paragraphs offers what can be done with it
+	if (fChildren != nil)
+	{
+		TBackwardViewListLoop loop(fChildren);
+		for (TView* child = loop.Next(); child != nil; child = loop.Next())
+			if (child->DerivedFrom(clParagraphView) && PtInRect(pt, &child->viewBounds))
+			{
+				if (TapDetail((TParagraphView*) child, pt))
+					return;
+				break;
+			}
+	}
 	PositionCaret(pt, true);
 }
 

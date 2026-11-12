@@ -86,6 +86,8 @@
 #include "host/RomBugs.h"
 #include "host/KeepInk.h"
 #include "CaretWriting.h"
+#include "LiveDetails.h"
+#include "MarginMarks.h"
 #include "InkReading.h"
 
 static int failures = 0;
@@ -8176,6 +8178,50 @@ TestDefaultButtonChange()
 }
 
 
+// DEVIATION (host, LiveDetails.h): the details found in a paragraph's text,
+// and the checkboxes and list marks written as text (MarginMarks.h)
+static void
+TestLiveDetails()
+{
+	struct Case { const char* text; DetailKind kind; long start; long count; };
+	static const Case kCases[] = {
+		{ "see www.newton.org.", kDetailURL, 4, 14 },				// (the full stop is the sentence's)
+		{ "at https://a.b/c?d=1 now", kDetailURL, 3, 17 },
+		{ "mail ann@example.com, then", kDetailEmail, 5, 15 },
+		{ "call (02) 9876 5432 today", kDetailPhone, 5, 14 },
+		{ "+61 412 345 678", kDetailPhone, 0, 15 },
+		{ "12 eggs, 3 days", kDetailNone, 0, 0 },					// too few digits
+		{ "the 1234567th time", kDetailNone, 0, 0 },				// a number joined to a word
+		{ "ann@home", kDetailNone, 0, 0 },							// no dot after the @
+		{ "nothing here", kDetailNone, 0, 0 } };
+	for (size_t i = 0; i < sizeof(kCases) / sizeof(kCases[0]); i++)
+	{
+		const Case& c = kCases[i];
+		UniChar text[64];
+		long length = 0;
+		for (; c.text[length] != 0; length++)
+			text[length] = (UniChar) (unsigned char) c.text[length];
+		text[length] = 0;
+		long start = -1, count = -1;
+		DetailKind kind = FindDetail(text, length, 0, &start, &count);
+		EXPECT(kind == c.kind);
+		if (kind == c.kind && kind != kDetailNone)
+			EXPECT(start == c.start && count == c.count);
+	}
+
+	Boolean ticked;
+	EXPECT(CheckboxWrittenLength(RefVar(MakeString("[ ] milk")), &ticked) == 4 && !ticked);
+	EXPECT(CheckboxWrittenLength(RefVar(MakeString("[x] milk")), &ticked) == 4 && ticked);
+	EXPECT(CheckboxWrittenLength(RefVar(MakeString("[]milk")), &ticked) == 2 && !ticked);
+	EXPECT(CheckboxWrittenLength(RefVar(MakeString("[a] milk")), &ticked) == 0);
+	Ref kind;
+	EXPECT(ListWrittenLength(RefVar(MakeString("- bread")), &kind) == 2 && EQRef(kind, RefVar(Intern((char*) "bullet"))));
+	EXPECT(ListWrittenLength(RefVar(MakeString("12) bread")), &kind) == 4 && EQRef(kind, RefVar(Intern((char*) "number"))));
+	EXPECT(ListWrittenLength(RefVar(MakeString("-5 degrees")), &kind) == 0);
+	EXPECT(ListWrittenLength(RefVar(MakeString("3.5 kg")), &kind) == 0);
+}
+
+
 int
 main()
 {
@@ -8336,6 +8382,7 @@ main()
 		TestDefaultButtonChange();
 		TestModalDialogViews();
 		TestInsertItems();
+		TestLiveDetails();
 		TestClipboard();
 		TestHiliteStroke();
 		TestListView();
