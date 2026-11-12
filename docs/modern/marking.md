@@ -1,6 +1,43 @@
 # Marking: a mark beside any line, and one list of everything marked
 
-**Status: a proposal.**
+**Status: first version built (2026-11-12), behind the Host panel's
+"Marks" (`NEWTON_MARKING=1`/`=0` overrides; `host/Features.h`).**
+
+## State
+
+- **Making a mark:** the pop-up a tap on the caret brings up has a row
+  "* Mark" under the space bar (`views/CaretWriting.cpp`). It marks the
+  paragraphs that have something selected in them, or with nothing
+  selected the one with the caret; when every one of them is marked
+  already it takes the marks off.
+- **Where a mark is kept:** in the paragraph itself, a slot `marked` of the
+  paragraph's data frame (the form in the note entry's `data` array), the
+  time in minutes. The note is saved at once (`EntryChangeXmit`). A
+  MessagePad opens such a note as it is and ignores the slot.
+- **Showing it:** a small star in the margin beside a marked paragraph
+  (`TEditView::DrawMarks`).
+- **Marked**, in Extras (`src/host/HostMarks.ns`, installed when marking is
+  on): every marked paragraph of every note, newest first - its text, ink
+  words by their readings - with its note's first line and the time. A tap
+  on a row opens the note in the Notepad (`ShowFoundItem`, as Find does);
+  a tap on the row's star takes the mark off; Close in the header, a tap
+  on the header a page back, below the last row a page on.
+- Demo `src/host/demo/marking.ns`, ctests `host.NewtonMarking` and `.off`;
+  pictures `build/marking-popup.pgm`, `marking-note.pgm`, `marking-list.pgm`.
+
+Departures from the design below, and why:
+- the marks are kept in the notes, not in a `Marks` soup: the list is made
+  by reading the notes when Marked opens. Nothing can fall out of step (a
+  note edited, beamed, restored, synced carries its marks), at the cost of
+  reading every note on a machine with thousands; a soup can be added as
+  an index later without moving the marks.
+- one kind of mark (the star); no kinds yet.
+- not built: a star written in the margin (it needs the structure
+  recogniser, `structure.md`); opening the note *at the line* (it opens
+  the note); marks in other applications' paragraphs (Names' notes);
+  the To-do kind's done state.
+
+## The proposal
 
 ## What it is for
 

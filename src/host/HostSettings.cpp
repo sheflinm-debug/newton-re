@@ -6,6 +6,8 @@
 
 #include "Colour.h"
 #include "host/KeepInk.h"
+#include "host/Features.h"
+#include "HostMarks.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -340,6 +342,12 @@ FHostSettingsList(RefArg /*rcvr*/)
 	// its ink after it is read, and ink is read in the background
 	if (!KeepInkFromEnvironment())
 		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
+	// the other modern additions (host/Features.h), each unless its
+	// variable has the say
+	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists" };
+	for (int id = 0; id < kFeatureCount; id++)
+		if (!HostFeatureFromEnvironment(id))
+			AddArraySlot(list, RefVar(Item(HostFeatureSetting(id), kFeatureLabels[id], kCheck, HostFeature(id))));
 	return list;
 }
 
@@ -425,6 +433,17 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 		fprintf(stderr, "[host] handwriting %s\n", on ? "kept after it is read" : "not kept (the ROM's way)");
 		return TRUEREF;
 	}
+	for (int id = 0; id < kFeatureCount; id++)
+		if (strcmp(name, HostFeatureSetting(id)) == 0)
+		{
+			if (HostFeatureFromEnvironment(id))
+				return NILREF;					// (its variable has the say)
+			SetHostFeature(id, on);
+			fprintf(stderr, "[host] %s %s\n", HostFeatureSetting(id), on ? "on" : "off");
+			if (id == kFeatureMarking)
+				HostMarksFeatureChanged();
+			return TRUEREF;
+		}
 	if (strcmp(name, "colourScreen") == 0)
 	{
 		bool taken = SetStartupValue("colourScreen", on ? 1 : 0);

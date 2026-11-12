@@ -10,6 +10,11 @@
 				way is the selection when there is one - the selected words
 				of every paragraph of the note - and the whole note when
 				there is none.
+
+				With marking on (host/Features.h; docs/modern/marking.md) a
+				row "* Mark" comes after it, which hands the paragraphs
+				selected, or the caret's, to the Marked application
+				(HostMarks.ns's ToggleMarks).
 */
 
 #ifndef __CARETWRITING_H

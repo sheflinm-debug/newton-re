@@ -167,6 +167,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostSettings.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostMarks.ns, the Marked application (docs/modern/marking.md), likewise
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostMarks.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp -DNAME=gHostMarksSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostMarks.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostWordEngines.ns, the host's engines in the Handwriting Recognition
 # slip (recognition/WordEngines.h), compiled in the same way
 add_custom_command(
@@ -178,6 +186,7 @@ add_custom_command(
     VERBATIM)
 add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.cpp HostOrientation.cpp HostSettings.cpp HostFontProvider.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostSettingsSource.cpp HostWordEngines.cpp
+               HostMarks.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial)
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
@@ -1419,6 +1428,21 @@ set_tests_properties(host.NewtonKeepInkFind PROPERTIES TIMEOUT 180
 add_test(NAME host.NewtonKeepInkPref COMMAND newton --display 320x480 --headless 60 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink-pref.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
 set_tests_properties(host.NewtonKeepInkPref PROPERTIES TIMEOUT 120
                      PASS_REGULAR_EXPRESSION "listed off, KeepsInk nil.*on taken true, KeepsInk true, listed on.*off again, KeepsInk nil.*keep-ink-pref: done")
+
+# marking (docs/modern/marking.md; host/HostMarks.ns): the caret's pop-up
+# has a Mark row, the paragraph marked and saved with its note, a star
+# beside it, Marked lists it, its star tapped takes the mark off; .off, the
+# ROM's pop-up
+add_test(NAME host.NewtonMarking COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/marking.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonMarking PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_MARKING=1"
+                     PASS_REGULAR_EXPRESSION "HostFeatureOn true, the pop-up has 3 items.*the paragraph marked, saved with the note true.*Marked lists 1: ton in ton.*the star tapped, Marked lists 0, the paragraph marked nil.*marking: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+add_test(NAME host.NewtonMarking.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/marking.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonMarking.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_MARKING=0"
+                     PASS_REGULAR_EXPRESSION "HostFeatureOn nil, the pop-up has 2 items.*marking: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,

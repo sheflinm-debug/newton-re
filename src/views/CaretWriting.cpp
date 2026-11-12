@@ -15,6 +15,7 @@
 #include "Interpreter.h"
 #include "RSSymbols.h"
 #include "host/KeepInk.h"
+#include "host/Features.h"
 #include <string.h>
 
 /*------------------------------------------------------------------------------
@@ -54,8 +55,21 @@ SetStripPixel(unsigned char* rows, long x, long y)
 	rows[y * kStripRowBytes + (x >> 3)] |= (unsigned char) (0x80 >> (x & 7));
 }
 
+static const char* const kMarkArt[kArtRows] = {	// a star, and "Mark"
+	"....#..........#...#............#...",
+	"...###.........##.##............#...",
+	"#########......#.#.#..###..#.#..#..#",
+	".#######.......#...#.....#.##...#.#.",
+	"..#####........#...#..####.#....##..",
+	".###.###.......#...#.#...#.#....#.#.",
+	".##...##.......#...#..####.#....#..#",
+	"#.......#...........................",
+};
+
+// A grid item of one row: `columns` cells across the 43 pixels, framed
+// with the ROM's dither, the art of cell i drawn from x = lefts[i].
 static Ref
-MakeStripItem(void)
+MakeArtItem(long columns, const char* const* const* arts, const long* lefts)
 {
 	long size = 16 + kStripHeight * kStripRowBytes;
 	RefVar bits(AllocateBinary(RSSYMbits, size));
@@ -77,7 +91,8 @@ MakeStripItem(void)
 		else if (odd)
 		{
 			SetStripPixel(rows, 1, y);
-			SetStripPixel(rows, 21, y);
+			if (columns == 2)
+				SetStripPixel(rows, 21, y);
 			SetStripPixel(rows, kStripWidth - 2, y);
 		}
 		else
@@ -86,14 +101,11 @@ MakeStripItem(void)
 			SetStripPixel(rows, kStripWidth - 1, y);
 		}
 	}
-	for (long y = 0; y < kArtRows; y++)
-		for (long x = 0; kTextArt[y][x] != 0; x++)
-		{
-			if (kTextArt[y][x] == '#')
-				SetStripPixel(rows, 3 + x, kArtTop + y);
-			if (kWritingArt[y][x] == '#')
-				SetStripPixel(rows, 23 + x, kArtTop + y);
-		}
+	for (long c = 0; c < columns; c++)
+		for (long y = 0; y < kArtRows; y++)
+			for (long x = 0; arts[c][y][x] != 0 && lefts[c] + x < kStripWidth - 2; x++)
+				if (arts[c][y][x] == '#')
+					SetStripPixel(rows, lefts[c] + x, kArtTop + y);
 
 	RefVar bounds(AllocateFrame());
 	SetFrameSlot(bounds, RSSYMleft, RefVar(MAKEINT(0)));
@@ -103,9 +115,25 @@ MakeStripItem(void)
 	RefVar item(AllocateFrame());
 	SetFrameSlot(item, RSSYMbits, bits);
 	SetFrameSlot(item, RSSYMbounds, bounds);
-	SetFrameSlot(item, RSSYMwidth, RefVar(MAKEINT(2)));
+	SetFrameSlot(item, RSSYMwidth, RefVar(MAKEINT(columns)));
 	SetFrameSlot(item, RSSYMheight, RefVar(MAKEINT(1)));
 	return item;
+}
+
+static Ref
+MakeStripItem(void)
+{
+	static const char* const* const kArts[2] = { kTextArt, kWritingArt };
+	static const long kLefts[2] = { 3, 23 };
+	return MakeArtItem(2, kArts, kLefts);
+}
+
+static Ref
+MakeMarkItem(void)
+{
+	static const char* const* const kArts[1] = { kMarkArt };
+	static const long kLefts[1] = { 4 };
+	return MakeArtItem(1, kArts, kLefts);
 }
 
 
@@ -219,19 +247,62 @@ ShowWritingAround(TView* keyView, Boolean asInk)
 	T h e   p o p - u p
 ------------------------------------------------------------------------------*/
 
-// The pop-up's pickActionScript: a pick of the strip is carried out here,
-// any other handed to the ROM's pop-up as it would have had it.
+// The paragraphs a mark goes on: those with something selected in them,
+// or with nothing selected the one with the caret.
+static Ref
+ParagraphsToMark(TView* keyView)
+{
+	RefVar list(MakeArray(0));
+	if (keyView == nil)
+		return list;
+	TView* editor = nil;
+	if (keyView->ClassID() == clEditView)
+		editor = keyView;
+	else if (keyView->fParent != nil && keyView->fParent->ClassID() == clEditView)
+		editor = keyView->fParent;
+	if (editor != nil && editor->fChildren != nil)
+	{
+		long children = editor->fChildren->Count();
+		for (long i = 0; i < children; i++)
+		{
+			TView* child = editor->fChildren->At((short) i);
+			if (child != nil && child->DerivedFrom(clParagraphView) && NOTNIL(child->FirstHilite()))
+				AddArraySlot(list, child->fContext);
+		}
+	}
+	if (Length(list) == 0 && keyView->DerivedFrom(clParagraphView))
+		AddArraySlot(list, keyView->fContext);
+	return list;
+}
+
+
+// The pop-up's pickActionScript: a pick of the strip or the mark is
+// carried out here, any other handed to the ROM's pop-up as it would have
+// had it.  The mark is the Marked application's business (HostMarks.ns,
+// the global HostMarks:host): ToggleMarks(paragraphs).
 static Ref
 FCaretWritingPick(RefArg rcvr, RefArg picked)
 {
-	RefVar strip(GetFrameSlot(rcvr, RefVar(Intern((char*) "writingIndex"))));
-	if (IsFrame(picked) && ISINT(strip))
+	if (IsFrame(picked))
 	{
 		RefVar index(GetFrameSlot(picked, RSSYMindex));
-		if (ISINT(index) && RINT(index) == RINT(strip))
+		RefVar strip(GetFrameSlot(rcvr, RefVar(Intern((char*) "writingIndex"))));
+		RefVar mark(GetFrameSlot(rcvr, RefVar(Intern((char*) "markIndex"))));
+		if (ISINT(index) && ISINT(strip) && RINT(index) == RINT(strip))
 		{
 			RefVar x(GetFrameSlot(picked, RSSYMx));
 			ShowWritingAround(gRootView->fCaretView, ISINT(x) && RINT(x) == 1);
+			return NILREF;
+		}
+		if (ISINT(index) && ISINT(mark) && RINT(index) == RINT(mark))
+		{
+			RefVar marks(GetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) "HostMarks:host"))));
+			if (IsFrame(marks))
+			{
+				RefVar args(MakeArray(1));
+				SetArraySlot(args, 0, RefVar(ParagraphsToMark(gRootView->fCaretView)));
+				DoMessage(marks, RefVar(Intern((char*) "ToggleMarks")), args);
+			}
 			return NILREF;
 		}
 	}
@@ -244,21 +315,31 @@ FCaretWritingPick(RefArg rcvr, RefArg picked)
 Ref
 CaretPopupWithWriting(RefArg popup)
 {
-	if (!KeepInk() || !IsFrame(popup))
+	Boolean writing = KeepInk();
+	Boolean marking = HostFeature(kFeatureMarking);
+	if ((!writing && !marking) || !IsFrame(popup))
 		return popup;
 	RefVar items(GetProtoVariable(popup, RSSYMpopup, nil));
 	if (!IsArray(items))
 		return popup;
 	long count = Length(items);
-	RefVar all(MakeArray(count + 1));
+	RefVar all(MakeArray(count));
 	for (long i = 0; i < count; i++)
 		SetArraySlot(all, i, RefVar(GetArraySlotRef(items, i)));
-	SetArraySlot(all, count, RefVar(MakeStripItem()));
 
 	RefVar with(AllocateFrame());
+	if (writing)
+	{
+		SetFrameSlot(with, RefVar(Intern((char*) "writingIndex")), RefVar(MAKEINT(Length(all))));
+		AddArraySlot(all, RefVar(MakeStripItem()));
+	}
+	if (marking)
+	{
+		SetFrameSlot(with, RefVar(Intern((char*) "markIndex")), RefVar(MAKEINT(Length(all))));
+		AddArraySlot(all, RefVar(MakeMarkItem()));
+	}
 	SetFrameSlot(with, RSSYMpopup, all);
 	SetFrameSlot(with, RSSYMpickactionscript, RefVar(MakeCFunction((void*) FCaretWritingPick, 1, nil)));
 	SetFrameSlot(with, RefVar(Intern((char*) "romPopup")), popup);
-	SetFrameSlot(with, RefVar(Intern((char*) "writingIndex")), RefVar(MAKEINT(count)));
 	return with;
 }

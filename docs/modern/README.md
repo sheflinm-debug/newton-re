@@ -1,6 +1,7 @@
 # A Newton for today's use: the specifications
 
-**Status: proposals (2026-11-11). Nothing here is built.** These pages
+**Status: proposals (2026-11-11); built so far: `ink-and-text.md` and a first
+version of `marking.md` (each page's State says what).** These pages
 specify the additions the owner chose for a modern NewtonOS. Each builds on
 something the ROM already does and is an opt-in DEVIATION: with it off, the
 machine is the ROM's. They are Phase 6 of `docs/modernization-plan.md` and

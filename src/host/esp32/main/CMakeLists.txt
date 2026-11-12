@@ -213,6 +213,15 @@ include(${NEWTON_SRC}/cmake/EmbedText.cmake)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${INPUT})
 target_sources(${COMPONENT_LIB} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/HostSettingsSource.cpp ${NEWTON_SRC}/host/HostSettings.cpp)
 set_source_files_properties(${NEWTON_SRC}/host/HostSettings.cpp PROPERTIES COMPILE_OPTIONS "${all_quoted};-iquote${NEWTON_SRC}/host")
+# host/HostMarks.ns, the Marked application (docs/modern/marking.md; the
+# panel's "Marks" asks HostMarks.cpp to install it)
+set(INPUT ${NEWTON_SRC}/host/HostMarks.ns)
+set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp)
+set(NAME gHostMarksSource)
+include(${NEWTON_SRC}/cmake/EmbedText.cmake)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${INPUT})
+target_sources(${COMPONENT_LIB} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp ${NEWTON_SRC}/host/HostMarks.cpp)
+set_source_files_properties(${NEWTON_SRC}/host/HostMarks.cpp PROPERTIES COMPILE_OPTIONS "${all_quoted};-iquote${NEWTON_SRC}/host")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE forQ=1 NDEBUG)
 target_compile_options(${COMPONENT_LIB} PRIVATE

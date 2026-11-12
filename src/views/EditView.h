@@ -47,6 +47,7 @@ public:
 	virtual void	SetupDone(void);						// ROM 0x000a648c SetupDone__9TEditViewFv
 
 	virtual void	PostDraw(Rect& drawBounds);				// ROM 0x000a5eb8 PostDraw__9TEditViewFR5TRect
+	void			DrawMarks(void);						// host: the stars of marked paragraphs (host/Features.h)
 	virtual void	DrawHiliting(void);						// ROM 0x000a609c DrawHiliting__9TEditViewFv
 	virtual void	DrawHilitedData(void);					// ROM 0x000a6310 DrawHilitedData__9TEditViewFv
 	virtual void	HiliteAll(void);						// ROM 0x000a751c HiliteAll__9TEditViewFv
