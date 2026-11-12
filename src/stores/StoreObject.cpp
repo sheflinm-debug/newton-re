@@ -30,6 +30,7 @@
 #include "LargeBinaries.h"
 #include "DynamicArray.h"
 #include "Unicode.h"
+#include "InkText.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1466,6 +1467,9 @@ StorePermObject(RefArg obj, TStoreWrapper* wrapper, PSSId& id, CDynamicArray* la
 	OSErrIf(wrapper->Store()->IsReadOnly(&readOnly));
 	if (readOnly)
 		Throw(exStoreError, (void*) (Long) kSError_WriteProtected, nil);
+	// DEVIATION (host, InkText.h): the readings of ink words written
+	// beside their paragraph, so that a query finds them
+	HostIndexInkReadings(obj);
 	TStoreObjectWriter writer(obj, wrapper, id);
 	id = writer.Write();
 	if (duplicatedLargeBinary != nil)

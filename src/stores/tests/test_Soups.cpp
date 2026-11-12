@@ -823,6 +823,32 @@ TestTextSearch()
 	// the name is in the text too, so a query over it finds the entry
 	EXPECT(CountQuery("{words: [\"three\"]}") == 1);
 
+	// DEVIATION (host, InkText.h): writing kept as ink is found by its
+	// reading.  A note whose one word is an ink word - the character
+	// 0xF701, its style an 'inkWord binary carrying the reading "zany"
+	// (ink/InkReading.h's layout) - is found by "zany", and its paragraph
+	// is given the readings as a string slot inkText
+	{
+		static const unsigned char kInk[] = {
+			0x12, 0x34, 0x56, 0x78,						// the strokes (any bytes will do here)
+			0x00, 'z', 0x00, 'a', 0x00, 'n', 0x00, 'y',	// the reading
+			0x00, 0x04, 'I', 'R', 'd', '1',				// its length, the mark
+			0, 0, 0, 0, 0, 0, 0, 0 };					// the word's information
+		RefVar ink(AllocateBinary(RSSYMinkword, sizeof(kInk)));
+		memcpy(BinaryData(ink), kInk, sizeof(kInk));
+		SetFrameSlot(RefVar(gVarFrame), RefVar(SYMBOL("theInk")), ink);
+		Eval("theNote := theSoup:Add({name: \"four\", data: [{text: \"a\uF701\", "
+			 "styles: [1, {family: 'espy, face: 0, size: 10}, 1, theInk]}]})");
+		EXPECT(CountQuery("{words: [\"zany\"]}") == 1);
+		EXPECT(CountQuery("{text: \"zan\"}") == 1);
+		EXPECT(RINT(RefVar(Eval("StrLen(theNote.data[0].inkText)"))) == 4);
+		// the ink word gone, the slot goes too, and the note is not found
+		Eval("theNote.data[0] := {text: \"a\", styles: [1, {family: 'espy, face: 0, size: 10}]}");
+		Eval("theNote.data[0].inkText := \"zany\"; EntryChange(theNote)");
+		EXPECT(CountQuery("{words: [\"zany\"]}") == 0);
+		Eval("theNote := nil; theInk := nil");
+	}
+
 	Eval("theSoup := nil");
 	SoupRemoveFromStore(soup);
 	RemoveTStore(store);

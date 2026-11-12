@@ -1,0 +1,21 @@
+// "Keep handwriting" on the Host preferences panel (host/HostSettings.h,
+// host/KeepInk.h; docs/host-settings.md): listed, off, when NEWTON_KEEP_INK
+// is not set; turned on through the panel's HostSetSetting, ink is kept
+// (KeepsInk), and off again.  ctest host.NewtonKeepInkPref.
+//
+//   build/host/host/newton --display 320x480 --headless 60 --script src/host/demo/keep-ink-pref.ns
+
+kpListed := func() begin
+	local found := 'absent;
+	foreach item in HostSettingsList() do
+		if item.setting = 'keepInk then found := if item.value then 'on else 'off;
+	found;
+end;
+
+Print("keep-ink-pref: listed " & call kpListed with () & ", KeepsInk " & (if KeepsInk() then "true" else "nil"));
+Print("keep-ink-pref: on taken " & (if HostSetSetting('keepInk, true) then "true" else "nil")
+	  & ", KeepsInk " & (if KeepsInk() then "true" else "nil") & ", listed " & call kpListed with ());
+HostSetSetting('keepInk, nil);
+Print("keep-ink-pref: off again, KeepsInk " & (if KeepsInk() then "true" else "nil"));
+Print("keep-ink-pref: done");
+HostQuit();

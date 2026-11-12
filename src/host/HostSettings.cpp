@@ -5,6 +5,7 @@
 */
 
 #include "Colour.h"
+#include "host/KeepInk.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -335,6 +336,10 @@ FHostSettingsList(RefArg /*rcvr*/)
 	}
 	if (HostWindowOption("clearGhosts", &value))
 		AddArraySlot(list, RefVar(Item("clearGhosts", "Clear ghosts", kButton, 0)));
+	// DEVIATION (host/KeepInk.h; docs/modern/ink-and-text.md): writing keeps
+	// its ink after it is read, and ink is read in the background
+	if (!KeepInkFromEnvironment())
+		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
 	return list;
 }
 
@@ -411,6 +416,14 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 		bool taken = SetStartupValue("screenScale", RINT(value) + 1);
 		fprintf(stderr, "[host] the screen at %ldx when newton next starts%s\n", (long) RINT(value) + 1, taken ? "" : " - not kept");
 		return MAKEBOOLEAN(taken);
+	}
+	if (strcmp(name, "keepInk") == 0)
+	{
+		if (KeepInkFromEnvironment())
+			return NILREF;						// (NEWTON_KEEP_INK has the say)
+		SetKeepInk(on);
+		fprintf(stderr, "[host] handwriting %s\n", on ? "kept after it is read" : "not kept (the ROM's way)");
+		return TRUEREF;
 	}
 	if (strcmp(name, "colourScreen") == 0)
 	{

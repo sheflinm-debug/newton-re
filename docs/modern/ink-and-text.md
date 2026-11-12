@@ -4,37 +4,54 @@
 
 ## State (2026-11-11)
 
-Built, behind `NEWTON_KEEP_INK=1` (off by default):
+Built, behind the Host preferences panel's "Keep handwriting" (off by
+default; `NEWTON_KEEP_INK=1` or `=0` overrides it - `host/KeepInk.h`,
+`docs/host-settings.md`):
 - a reading inside an ink word (`ink/InkReading.h`);
 - a word read into text keeping its ink, whether it starts a paragraph
   (`TEditView::AddNewParagraph`), goes into one, or is read later out of
   an ink word;
 - the words of a range shown as their writing or as their text
   (`ShowRangeAs` in `views/ParagraphView.cpp`), and for scripts
-  `KeepsInk()` and `ShowWritingAs(view, start, stop, 'ink | 'text)`
-  (nil, nil: the whole paragraph), which answers where the range ends now.
-
+  `KeepsInk()`, `InkReading(inkWord)` and
+  `ShowWritingAs(view, start, stop, 'ink | 'text)` (nil, nil: the whole
+  paragraph), which answers where the range ends now;
 - the menu: the pop-up a tap on the caret brings up (the punctuation
   grid and the space bar) has a strip of two cells under the space bar,
   "Abc" and a scribble (`views/CaretWriting.h`; the owner's choice of
   menu). "Abc" shows writing as text, the scribble shows text as its
   writing: the selected words of every paragraph of the note when
   something is selected (a word partly selected counts whole), the whole
-  note when nothing is. With ink not kept the pop-up is the ROM's.
+  note when nothing is. With ink not kept the pop-up is the ROM's;
+- reading in the background: a paragraph with an ink word nobody has read
+  is an idler (`ReadInkInBackground`); once the pen has been still 1.5 s
+  it reads one word at a time and keeps only the reading - the page does
+  not change. A word the recogniser makes nothing of gets an empty
+  reading and is not tried again;
+- Find: as an entry is written to a store, each paragraph holding ink
+  words with readings gets a string slot `inkText`, the readings with
+  spaces between (`stores/InkText.h`). Every query already searches an
+  entry's strings, so the store format is unchanged and a MessagePad
+  finds the note by its handwriting too;
+- an edited word loses its ink: a kept run whose characters no longer
+  spell the reading is given its plain font, and runs that now agree are
+  merged (`DropStaleInk`, after every text change);
+- a change of font over a kept word keeps the ink (`ChangeStylesOfRange`).
 
-`src/host/demo/keep-ink.ns` writes "ton" on the Notepad, shows it as its
-writing and as text again, and leaves a picture of each (ctests
-`host.NewtonKeepInk` and `.off`; `test_Views`' `TestInsertItems`).
-`src/host/demo/keep-ink-menu.ns` does the same through the pop-up, with
-the pen (ctests `host.NewtonKeepInkMenu` and `.off`; picture
-`build/keep-ink-menu.pgm`).
+Demos and tests: `keep-ink.ns` (ShowWritingAs, ctests `host.NewtonKeepInk`
+and `.off`), `keep-ink-menu.ns` (the pop-up with the pen,
+`host.NewtonKeepInkMenu` and `.off`, picture `build/keep-ink-menu.pgm`),
+`keep-ink-find.ns` (ink written as ink, read in the background, found by a
+words query, `host.NewtonKeepInkFind`), `keep-ink-pref.ns` (the panel,
+`host.NewtonKeepInkPref`); `test_Views`' `TestInsertItems` (insert, show,
+selection, font change, edit), `test_Soups`' `TestTextSearch` (`inkText`).
 
-Not built: Find over readings, reading ink in the background, an edited
-word's ink dropped as it is edited (today it is only refused when shown
-as writing), a style change over a kept word, the preferences. Not
-checked with the pen: the selection case (the unit test selects with
-`HiliteText`; whether the caret is still there to tap while a selection
-is up in every application has not been tried on screen).
+Not built: a hit inside an ink word highlighting the ink when Find shows
+the note (the note is found and opened; nothing is selected in it);
+"keep handwriting for a month" (kept ink is kept until the word is
+edited). Not checked with the pen: the selection case of the pop-up (the
+unit test selects with `HiliteText`); what the original ROM (`--rom`) makes
+of a font frame with an `ink` slot and of a paragraph's `inkText`.
 
 ## What Newton has
 

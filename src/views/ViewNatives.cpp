@@ -24,6 +24,7 @@
 #include "DataView.h"
 #include "ParagraphView.h"
 #include "host/KeepInk.h"
+#include "InkReading.h"
 #include "StyleRuns.h"
 #include "RichString.h"
 #include "Dates.h"
@@ -71,6 +72,13 @@ static Ref
 FKeepsInk(RefArg /*rcvr*/)
 {
 	return KeepInk() ? TRUEREF : NILREF;
+}
+
+// InkReading(inkWord) - the reading kept inside an ink word, nil for none
+static Ref
+FInkReading(RefArg /*rcvr*/, RefArg ink)
+{
+	return InkWordReading(ink);
 }
 
 static Ref
@@ -2870,6 +2878,7 @@ RegisterViewNatives(void)
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "IdleViews")), RefVar(MakeCFunction((void*) FIdleViews, 0, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "KeepsInk")), RefVar(MakeCFunction((void*) FKeepsInk, 0, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "ShowWritingAs")), RefVar(MakeCFunction((void*) FShowWritingAs, 4, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "InkReading")), RefVar(MakeCFunction((void*) FInkReading, 1, nil)));
 	RegisterShapeNatives();
 	RegisterApplicationNatives();
 	RegisterKeyboardNatives();

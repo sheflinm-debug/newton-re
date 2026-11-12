@@ -7,7 +7,9 @@
 	(ink/InkReading.h) - so writing left as ink can be found, and a word
 	shown either way.  Off (the default), every path is the ROM's.
 
-	NEWTON_KEEP_INK=1 in the environment turns it on.  Header-only, as
+	The Host preferences panel's "Keep handwriting" turns it on or off
+	(host/HostSettings.h, kept in the System soup); NEWTON_KEEP_INK in the
+	environment (1 on, 0 off) overrides the panel.  Header-only, as
 	RomBugs.h is, so every library can ask without a link dependency; the
 	environment is read once (the Windows CRT's getenv locks).
 */
@@ -35,6 +37,20 @@ KeepInk(void)
 		keep = asked != NULL && asked[0] != 0 && asked[0] != '0';
 	}
 	return keep != 0;
+}
+
+// whether NEWTON_KEEP_INK says, one way or the other (the panel then
+// cannot change it)
+inline bool
+KeepInkFromEnvironment(void)
+{
+	static int sSaid = -1;
+	if (sSaid < 0)
+	{
+		const char* asked = getenv("NEWTON_KEEP_INK");
+		sSaid = asked != NULL && asked[0] != 0;
+	}
+	return sSaid != 0;
 }
 
 // tests: on or off, whatever NEWTON_KEEP_INK says

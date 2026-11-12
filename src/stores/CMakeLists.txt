@@ -13,6 +13,7 @@ add_library(stores STATIC
     NodeCache.cpp
     StorePipes.cpp
     StoreObject.cpp
+    InkText.cpp
     SoupIndex.cpp
     Entries.cpp
     Soups.cpp

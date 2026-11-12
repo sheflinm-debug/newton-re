@@ -1406,6 +1406,20 @@ set_tests_properties(host.NewtonKeepInkMenu.off PROPERTIES TIMEOUT 180
                      PASS_REGULAR_EXPRESSION "KeepsInk nil, the pop-up has 2 items.*keep-ink-menu: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain")
 
+# ink read in the background and found by Find (ParagraphView.cpp's
+# ReadInkInBackground, stores/InkText.h): "ton" kept as an ink word, read
+# while the pen is still, the page unchanged, the note found by "ton"
+add_test(NAME host.NewtonKeepInkFind COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink-find.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInkFind PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_KEEP_INK=1"
+                     PASS_REGULAR_EXPRESSION "before writing, a words query for ton finds 0 notes.*kept as ink, its reading at first none.*read in the background: ton, the page still <ink>.*finds 1 note.*shown as text at once: ton.*keep-ink-find: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain")
+
+# "Keep handwriting" on the Host panel: listed off, turned on and off
+add_test(NAME host.NewtonKeepInkPref COMMAND newton --display 320x480 --headless 60 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink-pref.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInkPref PROPERTIES TIMEOUT 120
+                     PASS_REGULAR_EXPRESSION "listed off, KeepsInk nil.*on taken true, KeepsInk true, listed on.*off again, KeepsInk nil.*keep-ink-pref: done")
+
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,
 # VoteOnWordUnit, HandleUnit)

@@ -275,6 +275,7 @@ TParagraphView::SetupDone(void)
 	fSetupDone = true;
 	TView::SetupDone();
 	DisposeStyleRecord(&record);
+	ScheduleInkReading(this);		// DEVIATION (host, KeepInk): ink read in the background
 }
 
 
@@ -2067,7 +2068,19 @@ TParagraphView::ChangeStylesOfRange(long start, long length, RefArg style, Boole
 				SetFrameSlot(spec, RSSYMface, RefVar(MAKEINT(bits)));
 			}
 		}
-		SetArraySlot(styles, at, RefVar(SetFontParms(one, spec)));
+		RefVar changed(SetFontParms(one, spec));
+		// DEVIATION (host, KeepInk): a word kept as text keeps its ink
+		// through a change of font
+		if (KeepInk() && StyleKeepsInk(one))
+		{
+			RefVar font(PlainFontFrame(changed));
+			if (NOTNIL(font))
+			{
+				SetFrameSlot(font, RSSYMink, RefVar(GetFrameSlot(one, RSSYMink)));
+				changed = font;
+			}
+		}
+		SetArraySlot(styles, at, changed);
 	}
 
 	// the range replaced by itself
@@ -2378,6 +2391,155 @@ TParagraphView::HandleUpDownKey(Boolean up)
 }
 
 
+/*------------------------------------------------------------------------------
+	R e a d i n g   i n k   i n   t h e   b a c k g r o u n d
+	DEVIATION (host, host/KeepInk.h; docs/modern/ink-and-text.md): not in
+	the ROM.  With ink kept, an ink word nobody has read is read when the
+	pen has been still a while, one word at a time, and only the reading
+	is kept (inside the ink word, ink/InkReading.h): the page shows the
+	same writing, but Find finds it (stores/InkText.h) and "Abc" shows it
+	as text without reading it then.  A word the recogniser makes nothing
+	of is given an empty reading, so it is not tried again.  The paragraph
+	is an idler with its own reason while it has any such word.
+------------------------------------------------------------------------------*/
+
+static const long kReadInkIdle = 0x4b49;		// host: the idler's reason ('KI')
+
+// The first ink word with no reading at all, its offset (-1: none) and itself.
+static long
+FirstUnreadInkWord(TParagraphView* view, RefVar* ink)
+{
+	RefVar styles(view->Styles());
+	if (!IsArray(styles))
+		return -1;
+	long offset = 0;
+	for (long i = 0; i + 1 < Length(styles); i += 2)
+	{
+		long length = RINT(RefVar(GetArraySlotRef(styles, i)));
+		RefVar style(GetArraySlotRef(styles, i + 1));
+		if (length == 1 && IsInkWord(style) && ISNIL(InkWordReading(style)))
+		{
+			*ink = style;
+			return offset;
+		}
+		offset += length;
+	}
+	return -1;
+}
+
+
+// DEVIATION (host, KeepInk): a word kept as text whose characters no
+// longer spell its ink's reading has been edited, and the ink no longer
+// says what the text says: its style loses the ink, and runs that now
+// agree are merged.  ==> whether anything was dropped.
+Boolean
+DropStaleInk(TParagraphView* view)
+{
+	if (!KeepInk())
+		return false;
+	RefVar styles(view->Styles());
+	if (!IsArray(styles))
+		return false;
+	RefVar text(view->Text());
+	long runs = Length(styles) / 2;
+	RefVar fresh(MakeArray(runs * 2));
+	Boolean dropped = false;
+	long offset = 0;
+	for (long i = 0; i < runs; i++)
+	{
+		long length = RINT(RefVar(GetArraySlotRef(styles, i * 2)));
+		RefVar style(GetArraySlotRef(styles, i * 2 + 1));
+		if (StyleKeepsInk(style))
+		{
+			RefVar reading(InkWordReading(RefVar(GetFrameSlot(style, RSSYMink))));
+			Boolean same = NOTNIL(reading)
+				&& Length(reading) / (long) sizeof(UniChar) - 1 == length
+				&& offset + length <= (Length(text) - 2) / (long) sizeof(UniChar)
+				&& memcmp((const UniChar*) BinaryData(text) + offset, BinaryData(reading),
+						  length * sizeof(UniChar)) == 0;
+			if (!same)
+			{
+				style = PlainFontFrame(style);
+				dropped = true;
+			}
+		}
+		SetArraySlot(fresh, i * 2, RefVar(MAKEINT(length)));
+		SetArraySlot(fresh, i * 2 + 1, style);
+		offset += length;
+	}
+	if (!dropped)
+		return false;
+	// runs that now agree made one
+	long used = 0;
+	for (long i = 0; i < runs; i++)
+	{
+		long length = RINT(RefVar(GetArraySlotRef(fresh, i * 2)));
+		RefVar style(GetArraySlotRef(fresh, i * 2 + 1));
+		if (used > 0)
+		{
+			RefVar before(GetArraySlotRef(fresh, used * 2 - 1));
+			if (!IsInkWord(style) && !IsInkWord(before) && EqualStyles(before, style))
+			{
+				long was = RINT(RefVar(GetArraySlotRef(fresh, used * 2 - 2)));
+				SetArraySlot(fresh, used * 2 - 2, RefVar(MAKEINT(was + length)));
+				continue;
+			}
+		}
+		SetArraySlot(fresh, used * 2, RefVar(MAKEINT(length)));
+		SetArraySlot(fresh, used * 2 + 1, style);
+		used++;
+	}
+	SetLength(fresh, used * 2);
+	SetFrameSlot(RefVar(view->DataFrame()), RSSYMstyles, fresh);
+	return true;
+}
+
+
+void
+ScheduleInkReading(TParagraphView* view)
+{
+	if (!KeepInk() || (view->fFlags & (vReadOnly | vWriteProtected)) != 0)
+		return;
+	RefVar ink;
+	if (FirstUnreadInkWord(view, &ink) >= 0)
+		gRootView->AddIdler(view, 2000, kReadInkIdle);
+}
+
+
+long
+ReadInkInBackground(TParagraphView* view)
+{
+	if (!KeepInk())
+		return 0;
+	// not while the pen is busy: down, or up less than 1.5 seconds ago
+	ULong now = Ticks();
+	if (!(gStrokeWorld.fLastUpTime >= gStrokeWorld.fLastDownTime && now - gStrokeWorld.fLastUpTime > 90))
+		return 1500;
+	RefVar ink;
+	long offset = FirstUnreadInkWord(view, &ink);
+	if (offset < 0)
+		return 0;
+	RefVar reading;
+	RefVar words(RecognizeInkWord(ink));
+	if (IsArray(words) && Length(words) > 0)
+	{
+		RefVar first(GetArraySlotRef(words, 0));
+		if (IsFrame(first))
+			reading = GetFrameSlotRef(first, RSSYMword);
+	}
+	if (!IsString(reading) || Length(reading) / (long) sizeof(UniChar) - 1 > 255)
+		reading = MakeString("");
+	// the view may have changed under the recogniser: the word looked for again
+	RefVar now_ink;
+	if (FirstUnreadInkWord(view, &now_ink) != offset || !EQRef(now_ink, ink))
+		return 300;
+	RefVar read(InkWordWithReading(ink, reading));
+	if (NOTNIL(read))
+		DoInsertItems(view, read, false, false, offset, 1, false, RefVar(NILREF));
+	return FirstUnreadInkWord(view, &now_ink) >= 0 ? 300 : 0;
+}
+
+
 // ROM 0x0017e964 Idle__14TParagraphViewFl
 // TView's idle; reason 2 is the deferred single tap - the caret placed at
 // the point kept when the tap came, once the double-tap interval has
@@ -2391,6 +2553,8 @@ long
 TParagraphView::Idle(long reason)
 {
 	long delay = TView::Idle(reason);
+	if (reason == kReadInkIdle)
+		return ReadInkInBackground(this);	// DEVIATION (host, KeepInk): above
 	if (reason == 2)
 	{
 		if (fTapped)
@@ -5304,9 +5468,9 @@ ShowRangeAs(TParagraphView* view, long start, long stop, Boolean asInk)
 				continue;
 			// (a run of ink words is one style a word: each is a run)
 			RefVar reading(InkWordReading(style));
-			if (ISNIL(reading))
+			if (ISNIL(reading) || Length(reading) <= (long) sizeof(UniChar))
 			{
-				unread = true;
+				unread = true;				// (an empty reading: the recogniser made nothing of it)
 				continue;
 			}
 			// the font of the text before it; with none, what the
@@ -6238,12 +6402,14 @@ TParagraphView::HandleReplaceText(RefArg cmd)
 	}
 	else
 		gRootView->SetKeyView(this, offset + inserted, 0, false);
+	DropStaleInk(this);				// DEVIATION (host, KeepInk): an edited word's ink goes
 	RangeChanged(offset, removed, inserted, RSSYMtext);
 	TView* dirtied = IsUndoCommand(cmd) ? fParent : this;
 	dirtied->Dirty(nil);
 	if (viewBounds.right - viewBounds.left < oldBounds.right - oldBounds.left
 	 || viewBounds.bottom - viewBounds.top < oldBounds.bottom - oldBounds.top)
 		fParent->Dirty(&oldBounds);
+	ScheduleInkReading(this);		// DEVIATION (host, KeepInk): ink read in the background
 }
 
 

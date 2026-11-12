@@ -5748,6 +5748,25 @@ TestInsertItems()
 		EXPECT(EQRef(RefVar(CaretPopupWithWriting(romPopup)), romPopup));
 		SetKeepInk(true);
 	}
+	// a change of font over a kept word: the word keeps its ink, in the
+	// new font
+	{
+		RefVar bold = PlainFontFrame(RefVar(p->GetStyleAtOffset(1, nil, nil)));
+		SetFrameSlot(bold, RSSYMface, RefVar(MAKEINT(1)));
+		p->ChangeStylesOfRange(1, 2, bold, false);
+		RefVar style(p->GetStyleAtOffset(1, nil, nil));
+		EXPECT(StyleKeepsInk(style));
+		EXPECT(StyleKeepsInk(style) && GetFontFace(style) == 1);
+		EXPECT(StyleKeepsInk(RefVar(p->GetStyleAtOffset(3, nil, nil))));
+	}
+	// a kept word edited: "hi" made "hx" - its text no longer says what
+	// its ink says, and the ink goes; "yo" keeps its own
+	DoInsertItems(p, RefVar(MakeString("x")), false, false, 2, 1, false, RefVar(NILREF));
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahxyob")) == 0);
+	EXPECT(!StyleKeepsInk(RefVar(p->GetStyleAtOffset(1, nil, nil))));
+	EXPECT(!StyleKeepsInk(RefVar(p->GetStyleAtOffset(2, nil, nil))));
+	EXPECT(StyleKeepsInk(RefVar(p->GetStyleAtOffset(3, nil, nil))));
+	EXPECT(DropStaleInk(p) == false);
 	SetKeepInk(false);
 
 	// and the undo the insert made puts the paragraph back
