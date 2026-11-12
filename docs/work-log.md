@@ -9,6 +9,18 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - the Files application
+
+On branch `modern`, behind the Host panel's "Files" (`NEWTON_FILES`): the
+Files application in Extras browses a folder of the host's
+(`NEWTON_FILES_ROOT`, or "Newton Files" in the home folder) and makes a
+note of a text or Markdown file (`src/host/HostFiles.ns`,
+`host/HostFiles.cpp`, `host/HostFilesOS.cpp`). Files are not yet entries
+of a store. Found on the way: NewtonScript's `or` answers TRUE rather than
+its operand (the cause, too, of a soup that "had no Query" in the
+Permissions work); `=` compares strings by identity; the Notepad's notes
+are `'paperroll` with packed integer fonts.
+
 ## 2026-11-12: Modern additions - the Assistant with a model behind it
 
 On branch `modern`, behind the Host panel's "Assistant model"

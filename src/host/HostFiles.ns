@@ -1,0 +1,386 @@
+// Files: a folder of the host's, browsed on the Newton (docs/modern/files.md).
+// Compiled into newton (HostFilesSource.cpp, made by
+// src/cmake/EmbedText.cmake) and evaluated at boot by HostInstallFiles
+// (host/HostFiles.cpp); the frame is kept in the global HostFiles:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureFiles - the Host
+// panel's "Files", NEWTON_FILES): the ROM has no files, only entries in
+// soups.  With this on, the Files application in Extras shows the host's
+// folder (NEWTON_FILES_ROOT, or "Newton Files" in the user's home, with
+// Documents, Downloads, Pictures, Music and Received in it): its folders,
+// and each file's kind and size.  A tap on a folder opens it; a tap on a
+// text or Markdown file makes a note of it (files.md's first level,
+// "translate into Newton data": paragraphs split at blank lines, a
+// Markdown heading in bold) and opens the note in the Notepad.  The file
+// itself is left as it is; the note remembers it in `fromFile`.
+//
+// The first piece of files.md only: the folder is read when it is shown,
+// not presented as a store (TFileStore), so files are not entries, Find
+// does not find them and nothing is told when they change.  Other kinds
+// are listed but not opened.
+
+{
+	appSymbol: '|Files:host|,
+
+	// the kinds of file, by the name's ending
+	kinds: {
+		txt: "Text", text: "Text", md: "Markdown", markdown: "Markdown", csv: "Table (CSV)",
+		pdf: "PDF document", jpg: "JPEG picture", jpeg: "JPEG picture", png: "PNG picture",
+		gif: "GIF picture", webp: "WebP picture", heic: "HEIC picture",
+		mp3: "MP3 sound", wav: "WAV sound", m4a: "AAC sound", mp4: "MP4 video", mov: "QuickTime video",
+		doc: "Word document", docx: "Word document", odt: "OpenDocument text",
+		xls: "Excel workbook", xlsx: "Excel workbook", ppt: "PowerPoint deck", pptx: "PowerPoint deck",
+		rtf: "RTF document", html: "Web page", htm: "Web page", vcf: "vCard", ics: "iCalendar",
+		zip: "ZIP archive", epub: "EPUB book", pkg: "Newton package"
+	},
+	// the kinds a note can be made of
+	textKinds: ["Text", "Markdown", "Table (CSV)"],
+
+	app: {
+		viewClass: 74,							// clView
+		viewFlags: 5,							// vVisible, vApplication
+		viewFormat: 273,						// white, a one-pixel black frame
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		declareSelf: 'base,
+		viewFont: 10240,
+		appSymbol: '|Files:host|,
+		title: "Files",
+		ReOrientToScreen: func() :Relayout(),
+
+		kFont: 10240,							// the system font, 10 point
+		kBold: 1058816,							// bold
+		kSmall: 9216,							// 9 point
+
+		folder: "",								// the folder shown, relative to the root
+		items: nil,								// its entries (HostFilesList)
+		scroll: 0,								// rows scrolled past
+		status: nil,							// a line about the last tap
+		listView: nil,
+
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight);
+		end,
+
+		viewSetupDoneScript: func()
+		begin
+			foreach v in :ChildViewFrames() do
+				if v.role then
+					self.(v.role) := v;
+			:Reload();
+			:Layout();
+		end,
+
+		viewQuitScript: func()
+		begin
+			listView := nil;
+			items := nil;
+		end,
+
+		Relayout: func()
+		begin
+			local p := GetAppParams();
+			SetValue(self, 'viewBounds, RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight));
+			:Layout();
+		end,
+
+		Layout: func()
+		begin
+			local box := :LocalBox();
+			SetValue(listView, 'viewBounds, RelBounds(0, 0, box.right, box.bottom));
+		end,
+
+		Reload: func()
+		begin
+			HostFilesRoot();
+			local listed := HostFilesList(folder);
+			items := if listed then listed else [];
+			if scroll >= Length(items) then scroll := 0;
+			if listView then listView:Dirty();
+		end,
+
+		// a folder shown: "" the root, else names joined by "/"
+		Show: func(path)
+		begin
+			folder := path;
+			scroll := 0;
+			status := nil;
+			:Reload();
+		end,
+
+		Up: func()
+		begin
+			local cut := nil;
+			for i := StrLen(folder) - 1 to 0 by -1 do
+				if not cut and folder[i] = $/ then cut := i;
+			:Show(if cut then SubStr(folder, 0, cut) else "");
+		end,
+
+		Tapped: func(item)
+		begin
+			local path := if StrLen(folder) > 0 then folder & "/" & item.name else item.name;
+			if item.folder then return :Show(path);
+			local files := GetGlobalVar('|HostFiles:host|);
+			local kind := files:KindOf(item.name);
+			if kind and files:IsText(kind) then begin
+				// (closed first, as Find's slip is, so the note is in front)
+				status := nil;
+				:Close();
+				files:OpenAsNote(path, item.name, kind);
+			end else begin
+				status := (if kind then kind else "This kind of file") & ": no viewer yet";
+				listView:Dirty();
+			end;
+		end,
+
+		viewChildren: [
+			{
+				viewClass: 74, viewFlags: 513, viewFormat: 0, role: 'listView,
+				viewBounds: {left: 0, top: 0, right: 240, bottom: 300},
+				HeaderHeight: func() FontHeight(:Parent().kBold) + FontHeight(:Parent().kSmall) + 14,
+				RowHeight: func() FontHeight(:Parent().kBold) + FontHeight(:Parent().kSmall) + 10,
+				viewDrawScript: func()
+				begin
+					local base := :Parent();
+					local files := GetGlobalVar('|HostFiles:host|);
+					local b := :LocalBox();
+					local w := b.right;
+					local hh := :HeaderHeight();
+					local bh := FontHeight(base.kBold);
+					:DrawShape(MakeText("Files", 8, 4, w div 2, 4 + bh), {font: base.kBold});
+					local cw := StrFontWidth("Close", base.kBold);
+					:DrawShape(MakeRoundRect(w - cw - 12, 2, w - 3, 4 + bh + 2, 4), {penSize: 1});
+					:DrawShape(MakeText("Close", w - cw - 7, 4, w - 4, 4 + bh), {font: base.kBold});
+					local where := if StrLen(base.folder) > 0 then "< " & base.folder else "Newton Files";
+					if base.status then where := base.status;
+					:DrawShape(MakeText(StyledStrTruncate(where, w - 16, base.kSmall), 8, bh + 8, w - 4, hh - 2), {font: base.kSmall});
+					:DrawShape(MakeLine(0, hh - 1, w, hh - 1), {penSize: 1});
+					local count := if base.items then Length(base.items) else 0;
+					if count = 0 then begin
+						:DrawShape(MakeText("This folder is empty.", 12, hh + 12, w - 12, hh + 30), {font: base.kFont});
+						return;
+					end;
+					local rowH := :RowHeight();
+					local y := hh;
+					local i := base.scroll;
+					while i < count and y < b.bottom do begin
+						local item := base.items[i];
+						if item.folder then
+							files:DrawFolder(self, 8, y + 6)
+						else
+							files:DrawPage(self, 10, y + 4);
+						:DrawShape(MakeText(StyledStrTruncate(item.name, w - 40, base.kBold), 30, y + 4, w - 6, y + 4 + bh),
+							{font: base.kBold});
+						local under := if item.folder then "Folder"
+							else (if files:KindOf(item.name) then files:KindOf(item.name) else "File") & ", " & files:SizeText(item.size);
+						:DrawShape(MakeText(under & "  " & ShortDate(item.modified), 30, y + 6 + bh, w - 6, y + rowH - 2),
+							{font: base.kSmall});
+						:DrawShape(MakeLine(4, y + rowH - 1, w - 4, y + rowH - 1), {penSize: 1, penPattern: 3});
+						y := y + rowH;
+						i := i + 1;
+					end;
+				end,
+				viewClickScript: func(unit)
+				begin
+					local base := :Parent();
+					local box := :GlobalBox();
+					local y := GetPoint(5, unit) - box.top - :HeaderHeight();
+					local x := GetPoint(4, unit) - box.left;
+					if y < 0 then begin
+						// Close at the right of the title; the path line goes up a folder
+						if y < -FontHeight(base.kSmall) - 6 then begin
+							if x > box.right - box.left - StrFontWidth("Close", base.kBold) - 14 then base:Close()
+							else base:ScrollBy(-1);
+						end else if StrLen(base.folder) > 0 then
+							base:Up();
+						return true;
+					end;
+					if not base.items then return true;
+					local i := base.scroll + y div :RowHeight();
+					if i >= Length(base.items) then
+						base:ScrollBy(1)
+					else
+						base:Tapped(base.items[i]);
+					true;
+				end
+			}
+		],
+
+		ScrollBy: func(pages)
+		begin
+			if not items then return;
+			local rows := Max(1, ((listView:LocalBox()).bottom - listView:HeaderHeight()) div listView:RowHeight());
+			local was := scroll;
+			scroll := Max(0, Min(scroll + pages * rows, Length(items) - 1));
+			if scroll = was and pages > 0 then scroll := 0;
+			listView:Dirty();
+		end
+	},
+
+	// whether notes can be made of a kind
+	IsText: func(kind)
+	begin
+		foreach k in textKinds do
+			if StrEqual(k, kind) then return true;
+		nil;
+	end,
+
+	// a file's kind from its name's ending (nil: not known)
+	KindOf: func(name)
+	begin
+		local dot := nil;
+		for i := StrLen(name) - 1 to 0 by -1 do
+			if not dot and name[i] = $. then dot := i;
+		if not dot then return nil;
+		local ending := Downcase(SubStr(name, dot + 1, StrLen(name) - dot - 1));
+		local slot := Intern(ending);
+		if HasSlot(kinds, slot) then kinds.(slot) else nil;
+	end,
+
+	SizeText: func(bytes)
+	begin
+		if bytes < 1024 then NumberStr(bytes) & " bytes"
+		else if bytes < 1048576 then NumberStr((bytes + 512) div 1024) & " KB"
+		else NumberStr((bytes + 524288) div 1048576) & " MB";
+	end,
+
+	DrawFolder: func(view, x, y)
+	begin
+		view:DrawShape(MakeRect(x, y + 2, x + 16, y + 13), {penSize: 1});
+		view:DrawShape(MakeRect(x, y, x + 7, y + 3), {penSize: 1});
+	end,
+
+	DrawPage: func(view, x, y)
+	begin
+		view:DrawShape(MakeRect(x, y, x + 12, y + 16), {penSize: 1});
+		for k := 0 to 2 do
+			view:DrawShape(MakeLine(x + 3, y + 5 + k * 3, x + 9, y + 5 + k * 3), {penSize: 1});
+	end,
+
+	// A text file made a note: its paragraphs split at blank lines, a
+	// Markdown heading ("# ...") in bold.  ==> the note's entry.
+	OpenAsNote: func(path, name, kind)
+	begin
+		local text := HostFilesReadText(path, 30000);
+		if not text then return nil;
+		local blocks := [];
+		local current := "";
+		local line := "";
+		// (a line at a time: a blank one ends a paragraph)
+		for i := 0 to StrLen(text) do begin
+			local c := if i < StrLen(text) then text[i] else nil;
+			if not c or c = $\n then begin
+				if StrLen(:Trim(line)) = 0 then begin
+					if StrLen(current) > 0 then AddArraySlot(blocks, current);
+					current := "";
+				end else if StrEqual(kind, "Markdown") and BeginsWith(line, "#") then begin
+					if StrLen(current) > 0 then AddArraySlot(blocks, current);
+					current := "";
+					local h := 0;
+					while h < StrLen(line) and line[h] = $# do h := h + 1;
+					AddArraySlot(blocks, {heading: :Trim(SubStr(line, h, StrLen(line) - h))});
+				end else
+					current := if StrLen(current) > 0 then current & "\n" & line else line;
+				line := "";
+			end else
+				line := line & c;
+		end;
+		if StrLen(current) > 0 then AddArraySlot(blocks, current);
+		local p := GetAppParams();
+		local width := p.appAreaWidth - 20;
+		// (the Notepad's own paragraph font, and it bold - 1 << 20 is the bold face)
+		local plain := 18435;
+		local bold := 18435 + 1048576;
+		local data := [];
+		local y := 6;
+		foreach b in blocks do begin
+			local t := if IsFrame(b) then b.heading else b;
+			local font := if IsFrame(b) then bold else plain;
+			local lines := 1;
+			foreach piece in :Lines(t) do
+				lines := lines + StrFontWidth(piece, font) div Max(1, width - 8);
+			lines := lines + Length(:Lines(t)) - 1;
+			local h := lines * (FontHeight(font) + 2) + 4;
+			AddArraySlot(data, {viewStationery: 'para, viewBounds: {left: 10, top: y, right: 10 + width, bottom: y + h},
+				text: t, viewFont: font});
+			y := y + h + 4;
+		end;
+		local note := {class: 'paperroll, viewStationery: 'paperroll, timestamp: Time(), height: Max(y + 10, 60),
+			labels: nil, data: data, fromFile: path};
+		local entry := GetUnionSoup("Notes"):AddToDefaultStoreXmit(note, nil);
+		Print("files: " & path & " made a note of " & Length(data) & " paragraphs");
+		local notepad := GetRoot().paperroll;
+		if notepad then begin
+			notepad:Open();
+			notepad:ShowFoundItem(entry, nil);
+		end;
+		entry;
+	end,
+
+	// a string's lines (split at returns)
+	Lines: func(t)
+	begin
+		local out := [];
+		local start := 0;
+		for i := 0 to StrLen(t) do
+			if i = StrLen(t) or t[i] = $\n then begin
+				AddArraySlot(out, SubStr(t, start, i - start));
+				start := i + 1;
+			end;
+		out;
+	end,
+
+	Trim: func(s)
+	begin
+		local a := 0;
+		local b := StrLen(s);
+		while a < b and (s[a] = $  or Ord(s[a]) = 9) do a := a + 1;
+		while b > a and (s[b - 1] = $  or Ord(s[b - 1]) = 9) do b := b - 1;
+		SubStr(s, a, b - a);
+	end,
+
+	// a folder for the Extras drawer
+	MakeIcon: func()
+	begin
+		local bitmap := MakeBitmap(28, 26, nil);
+		DrawIntoBitmap(MakeRect(2, 7, 26, 24), {penSize: 2}, bitmap);
+		DrawIntoBitmap(MakeRect(2, 3, 12, 8), {penSize: 2}, bitmap);
+		bitmap;
+	end,
+
+	IconEntry: func()
+	begin
+		local extras := GetUnionSoup(@307.name);
+		if not extras then return nil;
+		local cursor := Query(extras, {type: 'index});
+		local e;
+		while (e := cursor:Entry()) do begin
+			if e.app = appSymbol then return e;
+			cursor:Next();
+		end;
+		nil;
+	end,
+
+	Start: func()
+	begin
+		if not HostFeatureOn('files) then
+			return :Stop();
+		if not GetRoot().(appSymbol) then
+			GetRoot().(appSymbol) := BuildContext(app);
+		if not :IconEntry() then begin
+			local extras := GetUnionSoup(@307.name);
+			if extras then
+				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Files", app: appSymbol,
+					icon: :MakeIcon(), labels: nil, sequence: 33, _tagList: ['_icon, '_noBackup]}, nil);
+		end;
+	end,
+
+	Stop: func()
+	begin
+		local e := :IconEntry();
+		if e then EntryRemoveFromSoupXmit(e, nil);
+		local base := GetRoot().(appSymbol);
+		if base and base.viewCObject then base:Close();
+	end
+}

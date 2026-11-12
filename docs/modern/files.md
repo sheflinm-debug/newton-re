@@ -1,6 +1,7 @@
 # Files: real files as Newton entries, and viewing other systems' formats
 
-**Status: a proposal.** It assumes a host with a file system of its own
+**Status: a proposal; a first piece built (2026-11-12) - the Files
+application over a host folder, text and Markdown made notes (State).** It assumes a host with a file system of its own
 (`docs/modernization-plan.md`: a Linux kernel under the Newton, or any
 desktop host). Facts about third-party libraries here are from general
 knowledge, not checked for this page; licences in particular must be read
@@ -134,6 +135,36 @@ Find by name and by a PDF's text; a `.vcf` translated into a card and a
 card read back as the same `.vcf`. The document service against a fixed
 set of files, pages compared with reference bitmaps; a damaged file (the
 service dies, the Newton reports and carries on).
+
+## State (2026-11-12, branch `modern`)
+
+Built, behind the Host panel's "Files" (`host/Features.h`'s
+`kFeatureFiles`, `NEWTON_FILES`): the Files application in Extras
+(`src/host/HostFiles.ns`, the global `HostFiles:host`) over a folder of the
+host's - `NEWTON_FILES_ROOT`, or "Newton Files" in the user's home, made
+with Documents, Downloads, Pictures, Music and Received. It lists a
+folder's folders and files (kind from the name's ending, size, date), opens
+folders, and makes a note of a text, Markdown or CSV file (the first
+level, "translate into Newton data": paragraphs split at blank lines, a
+Markdown heading in the Notepad's font made bold; the note keeps the
+file's path in `fromFile`; the file is untouched). Natives
+(`host/HostFiles.cpp` over `host/HostFilesOS.cpp`, which keeps
+`<windows.h>` away from the Newton headers): `HostFilesRoot`,
+`HostFilesList`, `HostFilesReadText`, `HostFilesWriteText`,
+`HostFilesMakeFolder`; a path is relative to the folder and one that
+climbs out (`..`) or names a drive is refused. Demo `src/host/demo/files.ns`,
+ctests `host.NewtonFiles` and `.off`.
+
+Not built: everything that makes files entries - `TFileStore`, the
+`Files` soup, Find over files, change notifications, renaming and moving
+and the trash from the Newton, drives as stores; arrivals landing in
+Downloads/Received; Newton data as files; the document service (level 2)
+and every reader beyond plain text.
+
+Found on the way: the Notepad's notes are `class: 'paperroll`,
+`viewStationery: 'paperroll`, their paragraphs' fonts packed integers
+(18435, bold with 1 << 20) - a note made with `'paper` and a font frame
+opens empty.
 
 ## Owner decisions
 

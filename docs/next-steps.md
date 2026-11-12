@@ -63,7 +63,9 @@ by Find (`ink-and-text.md`); marks and the Marked application
 enforced (`permissions.md`); the Assistant handing a sentence its parse
 cannot read to a model, which rewrites it in the ROM's own words
 (`assistant.md`).  Each page's State says what is left.  Next in the
-README's order: files, then Camera and Gallery.  The owner's open question: Newton as an OS over a Linux kernel
+README's order: files' first piece is built (the Files application over
+a host folder, text made notes - `files.md`); next its file store, then
+Camera and Gallery.  The owner's open question: Newton as an OS over a Linux kernel
 or on bare metal, and the first device - `modernization-plan.md` is to be
 reworked around the answer.
 

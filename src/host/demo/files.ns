@@ -1,0 +1,86 @@
+// Files (docs/modern/files.md; host/HostFiles.ns, host/HostFiles.cpp).
+// With NEWTON_FILES=1 and NEWTON_FILES_ROOT a folder of the build's: the
+// folder is made with its standard folders; a Markdown file is written into
+// Documents (HostFilesWriteText); a path climbing out of the folder is
+// refused; the Files application lists the root's folders, a tap opens
+// Documents, a tap on the file makes a note of it - the heading in bold,
+// the paragraphs split at the blank line - and opens it in the Notepad.
+// Without it there is no application (ctests host.NewtonFiles and ...off).
+//
+//   NEWTON_FILES=1 NEWTON_FILES_ROOT=build/files-demo build/host/host/newton //       --display 320x480 --headless 120 --script src/host/demo/files.ns
+//
+// Leaves build/files-list.pgm (Documents) and build/files-note.pgm (the
+// note made of the file).
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+fdName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+fdTap := func(x, y) begin PenDown(x, y); PenUp(); end;
+
+fdYesNo := func(x) if x then "true" else "nil";
+
+// the note made of the file (nil: none yet)
+fdNote := func()
+  begin
+    local found := nil;
+    local cursor := GetUnionSoup("Notes"):Query({});
+    local e := cursor:Entry();
+    while e do
+      begin
+        if e.fromFile and StrEqual(e.fromFile, "Documents/Shopping.md") then found := e;
+        e := cursor:Next();
+      end;
+    found;
+  end;
+
+// the row of an item in the app's list, tapped
+fdTapRow := func(app, name)
+  begin
+    local index := nil;
+    foreach i, item in app.items do
+      if not index and StrEqual(item.name, name) then index := i;
+    local lb := app.listView:GlobalBox();
+    call fdTap with (lb.left + 60, lb.top + app.listView:HeaderHeight() + (index - app.scroll) * app.listView:RowHeight() + 8);
+  end;
+
+call walkSetup with (fdName, func() begin
+    local on := HostFeatureOn('files);
+    Print("files: HostFeatureOn " & call fdYesNo with (on) & ", the application " & call fdYesNo with (GetRoot().|Files:host|));
+    if not on then
+      begin
+        Print("files: done");
+        return HostQuit();
+      end;
+    HostFilesRoot();
+    Print("files: written " & call fdYesNo with (HostFilesWriteText("Documents/Shopping.md",
+      "# Shopping\n\nmilk and eggs\nbread\n\n- apples\n")));
+    Print("files: ../ listed " & call fdYesNo with (HostFilesList("..")));
+    local app := GetRoot().|Files:host|;
+    app:Open();
+    call waitFor with ("files: the root", func() app.viewCObject and app.items, func() begin
+        local names := "";
+        foreach i, item in app.items do names := names & (if i > 0 then ", " else "") & item.name;
+        Print("files: the root holds " & names);
+        AddDelayedCall(func() begin
+            call fdTapRow with (app, "Documents");
+            call waitFor with ("files: Documents", func() StrEqual(app.folder, "Documents") and Length(app.items) > 0, func() begin
+                Print("files: Documents holds " & app.items[0].name & ", " & GetGlobalVar('|HostFiles:host|):KindOf(app.items[0].name));
+                AddDelayedCall(func() begin
+                    ScreenSnapshot("build/files-list.pgm");
+                    call fdTapRow with (app, "Shopping.md");
+                    call waitFor with ("files: the note", fdNote, func() begin
+                        local note := call fdNote with ();
+                        Print("files: the note has " & Length(note.data) & " paragraphs: " & note.data[0].text
+                          & " (bold " & (if BAnd(note.data[0].viewFont, 1048576) <> 0 then "yes" else "no") & "), " & note.data[1].text);
+                        AddDelayedCall(func() begin
+                            ScreenSnapshot("build/files-note.pgm");
+                            Print("files: done");
+                            HostQuit();
+                          end, nil, 1000);
+                      end, 20);
+                  end, nil, 500);
+              end, 20);
+          end, nil, 500);
+      end, 20);
+  end);

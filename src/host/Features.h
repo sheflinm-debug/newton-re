@@ -25,6 +25,7 @@ enum HostFeatureId
 	kFeatureStructure,		// docs/modern/structure.md: checkboxes and lists recognised from writing
 	kFeaturePermissions,	// docs/modern/permissions.md: what each package declares and is granted, recorded
 	kFeatureAssistant,		// docs/modern/assistant.md: a sentence the Assistant cannot parse handed to a model
+	kFeatureFiles,			// docs/modern/files.md: the Files application over a folder of the host's
 	kFeatureCount
 };
 
@@ -32,21 +33,21 @@ enum HostFeatureId
 inline const char*
 HostFeatureSetting(int id)
 {
-	static const char* const kNames[kFeatureCount] = { "marking", "structure", "permissions", "assistant" };
+	static const char* const kNames[kFeatureCount] = { "marking", "structure", "permissions", "assistant", "files" };
 	return kNames[id];
 }
 
 inline const char*
 HostFeatureVariable(int id)
 {
-	static const char* const kNames[kFeatureCount] = { "NEWTON_MARKING", "NEWTON_STRUCTURE", "NEWTON_PERMISSIONS", "NEWTON_ASSISTANT" };
+	static const char* const kNames[kFeatureCount] = { "NEWTON_MARKING", "NEWTON_STRUCTURE", "NEWTON_PERMISSIONS", "NEWTON_ASSISTANT", "NEWTON_FILES" };
 	return kNames[id];
 }
 
 inline int*
 HostFeatureStates(void)
 {
-	static int sStates[kFeatureCount] = { -1, -1, -1, -1 };		// -1: the environment not yet read
+	static int sStates[kFeatureCount] = { -1, -1, -1, -1, -1 };		// -1: the environment not yet read
 	return sStates;
 }
 
@@ -55,7 +56,7 @@ HostFeatureStates(void)
 inline bool
 HostFeatureFromEnvironment(int id)
 {
-	static int sSaid[kFeatureCount] = { -1, -1, -1, -1 };
+	static int sSaid[kFeatureCount] = { -1, -1, -1, -1, -1 };
 	if (sSaid[id] < 0)
 	{
 		const char* asked = getenv(HostFeatureVariable(id));

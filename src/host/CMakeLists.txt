@@ -175,6 +175,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostMarks.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostFiles.ns, the Files application (docs/modern/files.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostFiles.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp -DNAME=gHostFilesSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostFiles.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -205,6 +213,7 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                HostMarks.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp HostOpenURL.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostPermissionsSource.cpp
                HostAssist.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
+               HostFiles.cpp HostFilesOS.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial)
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
@@ -1486,6 +1495,28 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/../fixtures/packages/fonts/monaco.pkg)
                          FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
   endforeach()
 endif()
+
+# Files (docs/modern/files.md; host/HostFiles.ns): a folder of the build's
+# made with its standard folders, a Markdown file written into it, a path
+# out of it refused, the Files application's list, a folder opened and the
+# file made a note; .off, no application
+foreach(state 1 0)
+  if(state)
+    set(name host.NewtonFiles)
+    set(pass "HostFeatureOn true, the application true.*written true.*[.][.]/ listed nil.*the root holds Documents, Downloads, Music, Pictures, Received.*Documents holds Shopping.md, Markdown.*Documents/Shopping.md made a note of 3 paragraphs.*the note has 3 paragraphs: Shopping .bold yes., milk and eggs.*files: done")
+  else()
+    set(name host.NewtonFiles.off)
+    set(pass "HostFeatureOn nil, the application nil.*files: done")
+  endif()
+  add_test(NAME ${name} COMMAND newton --display 320x480 --headless 120
+           --store ${CMAKE_BINARY_DIR}/files-${state}.store --erase
+           --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/files.ns
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+  set_tests_properties(${name} PROPERTIES TIMEOUT 180
+                       ENVIRONMENT "NEWTON_FILES=${state};NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/files-test-${state}"
+                       PASS_REGULAR_EXPRESSION "${pass}"
+                       FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+endforeach()
 
 # the Assistant with a model behind it (docs/modern/assistant.md;
 # host/HostAssist.ns): tools/host/fakemodel.py answers as a model from a
