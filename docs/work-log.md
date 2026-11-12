@@ -9,6 +9,35 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - ink kept, marks, checkboxes, lists, live details
+
+On branch `modern` (`docs/modern/`), each off unless the Host panel or its
+environment variable turns it on, so off is the ROM's machine:
+- **Ink kept after recognition** (`ink-and-text.md`): a reading inside the
+  ink word (`ink/InkReading.h`), a recognised word keeping its ink in its
+  style, the caret's pop-up showing a note or the selection as writing or
+  as text (`views/CaretWriting.h`), unread ink read in the background
+  (`ReadInkInBackground`), Find over handwriting through an `inkText`
+  string written beside each paragraph as an entry is stored
+  (`stores/InkText.h` - the store format unchanged), an edited word losing
+  its ink, a font change keeping it; "Keep handwriting" on the Host panel.
+- **Marks** (`marking.md`): a "Mark" row in the caret's pop-up, the mark a
+  `marked` slot in the paragraph's data frame, a star in the margin, and
+  the Marked application in Extras (`src/host/HostMarks.ns`). Departure
+  from the spec: no `Marks` soup - the list is read from the notes, so it
+  cannot disagree with them.
+- **Structure** (`structure.md`), first pieces: checkboxes and list items
+  in a plain note (`views/MarginMarks.h`; made from the pop-up or offered
+  from "[ ]", "- ", "1. " written as text, accepted with a tap), and live
+  details - web and e-mail addresses and telephone numbers underlined,
+  a tap offering Open, Mail, Call (`views/LiveDetails.h`,
+  `host/HostOpenURL.cpp`, which passes on only http, https, mailto, tel).
+
+Found on the way: a `protoStatusBar` (@73) without a fill shows what is
+behind it - the Notepad's own bar showed through Marked's; a NewtonScript
+symbol cannot be a reserved word (`'call`); `kShortTimeStrSpec` and the
+like are NTK compile-time constants, not globals.
+
 ## 2026-11-11: Network cards on an unpatched ROM - WeirdCardInserted's card type
 
 The NewtonTalk list reports NIE network cards failing with -48807 on a US

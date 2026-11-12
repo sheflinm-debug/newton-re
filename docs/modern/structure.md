@@ -47,7 +47,7 @@ card, Assistant sentences (the rest of the live-details table); a detail
 in an ink word's reading (only text); the `Links` soup. A square or a dash *drawn* before a line (it needs the
 stroke positions: the structure recogniser proper, below); a list item's
 level (a line begun further right); a new line after an item continuing
-the list; live details; headings, sums, tables, diagrams; a
+the list; headings, sums, tables, diagrams; a
 tap accepting being undone by a scrub (Undo does undo the text change).
 
 ## The proposal

@@ -53,7 +53,17 @@ wait on the owner (its last section).
 `docs/modern/` specifies the plan's last phase, the additions for today's
 use: ink kept and searchable, structure recognition, marking, a Camera and
 a Gallery, permissions, a model behind the Assistant, transports, sync and
-on-device inspection.  Proposals too; its README orders them.
+on-device inspection.  Its README orders them.  Built on branch `modern`
+(2026-11-12), each behind a Host panel switch and an environment variable
+(`host/KeepInk.h`, `host/Features.h`): ink kept after recognition, shown
+as ink or text from the caret's pop-up, read in the background and found
+by Find (`ink-and-text.md`); marks and the Marked application
+(`marking.md`); checkboxes, lists and live details in a note
+(`structure.md`).  Each page's State says what is left.  Next in the
+README's order: permissions, then the Assistant; files, Camera and
+Gallery.  The owner's open question: Newton as an OS over a Linux kernel
+or on bare metal, and the first device - `modernization-plan.md` is to be
+reworked around the answer.
 
 ## In progress
 
