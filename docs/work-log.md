@@ -9,6 +9,25 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - Internet mail
+
+On branch `modern`, behind the Host panel's "Internet mail"
+(`NEWTON_MAIL`): a Mail transport (`src/host/HostMail.ns`) sending by SMTP
+and fetching by IMAP (`host/HostMailEngine.cpp`, polled state machines
+over the IPP socket), messages made and read by `host/HostMailFormat.cpp`
+(MIME, quoted-printable, base64, RFC 2047; ctest `host.MailFormat`).
+Accounts as the owner chose: a main account signed in from the host's
+settings, and secondary accounts added through `AddAccount` - open to any
+package. Passwords are kept by the host, never in a soup
+(`host/HostMailKeys.cpp`: Windows' Credential Manager, or memory).
+Received mail goes to the In Box. `tools/host/fakemail.py` is the tests'
+server (ctests `host.NewtonMail`, `.off`). Found on the way: the Notepad
+takes a received item at once unless the transport says `dontAutoPutAway:
+'never`; `protoTransport` has a `lastError` slot of its own; `--script`
+files are not read as UTF-8; a Python heredoc through the shell writes
+Windows-1252 and turns `\\u` escapes into characters - edit such files from
+a script file instead.
+
 ## 2026-11-12: Modern additions - the Files transport
 
 On branch `modern`, with "Files" on: a transport (`HostFiles.ns`'s

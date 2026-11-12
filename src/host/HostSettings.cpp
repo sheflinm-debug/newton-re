@@ -11,6 +11,7 @@
 #if !defined(ESP_PLATFORM)
 #include "HostFiles.h"
 #include "HostPictures.h"
+#include "HostMail.h"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -348,7 +349,7 @@ FHostSettingsList(RefArg /*rcvr*/)
 		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
 	// the other modern additions (host/Features.h), each unless its
 	// variable has the say
-	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery" };
+	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery", "Internet mail" };
 	for (int id = 0; id < kFeatureCount; id++)
 		if (!HostFeatureFromEnvironment(id))
 			AddArraySlot(list, RefVar(Item(HostFeatureSetting(id), kFeatureLabels[id], kCheck, HostFeature(id))));
@@ -451,6 +452,8 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 				HostFilesFeatureChanged();		// (the Gallery is a view of the Files soup and starts with it)
 			if (id == kFeatureGallery)
 				HostGalleryFeatureChanged();
+			if (id == kFeatureMail)
+				HostMailFeatureChanged();
 #endif
 			return TRUEREF;
 		}

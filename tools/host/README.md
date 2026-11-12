@@ -618,3 +618,20 @@ found two of the bugs below.  What it found is in `docs/host-lp64.md`,
   Pillow is needed only to run it: its outputs are committed.
 - **Output:** `src/hal/tests/pictures/*.png|jpg|ppm`, `src/host/demo/camera/test-1..3.jpg`.
 - **Used by:** ctests `hal.HostImage`, `host.NewtonGallery`.
+
+## fakemail.py - a pretend mail server for the Mail transport
+
+    python tools/host/fakemail.py --account USER:PASSWORD:ADDRESS... [--message "USER=FROM|SUBJECT|TEXT"]... --spawn <newton> [arguments...]
+
+- **Purpose:** newton's Internet mail (`src/host/HostMail.ns`, `docs/modern/transports.md`) sends by SMTP and fetches
+  by IMAP. This is a server of both on 127.0.0.1, so the ctests need no mail account and no network.
+- **How:** each `--account` has an In Box; the first is newton's main account. It runs newton with
+  `NEWTON_MAIL_ADDRESS`, `_USER`, `_PASSWORD`, `_NAME`, `_SMTP` and `_IMAP` pointed at itself, `NEWTON_MAIL_KEYSTORE=memory`
+  (the host's real key store is never touched) and `NEWTON_MAIL_POLL=2`. A `--message` waits in that account's In Box,
+  made by Python's email package (multipart/alternative, an HTML part, the subject encoded when it is not ASCII); in its
+  text `\n` is a new line and `\uXXXX` a character, so a ctest's arguments stay ASCII. Mail sent to an account's address
+  is put in its In Box, so newton can send and receive its own. AUTH PLAIN and LOGIN check the password.
+- **Output:** newton's output passed through, and `fakemail: smtp on ..., imap on ...`, `fakemail: USER logged in
+  (smtp|imap)` (once each), `fakemail: USER refused (smtp|imap)`, `fakemail: from A to B: "SUBJECT"`,
+  `fakemail: USER fetched "SUBJECT"`; exits with newton's status.
+- **Used by:** ctests `host.NewtonMail` and `.off` (`src/host/demo/mail.ns`).

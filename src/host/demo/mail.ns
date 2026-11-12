@@ -1,0 +1,193 @@
+// Internet mail (docs/modern/transports.md; host/HostMail.ns, host/HostMail.cpp,
+// host/HostMailEngine.cpp, host/HostMailFormat.cpp) against tools/host/fakemail.py
+// (ctest host.NewtonMail):
+//   - the main account, signed in from the host's settings, finds the
+//     message waiting for it (multipart, its subject encoded: "Café at
+//     eight") and it comes into the In Box as a Note;
+//   - a Note mailed to the main account's own address is sent by SMTP and
+//     comes back by IMAP;
+//   - a secondary account added through the API any package can use
+//     (AddAccount, HostMailSetPassword) finds its own mail, and a Note sent
+//     from it arrives from its address;
+//   - with its password wrong the server refuses, and the item comes back
+//     with the reason;
+//   - the routing slip shows To and From, From the main account;
+//   - SetMain and RemoveAccount (its password forgotten with it).
+//
+//   python tools/host/fakemail.py --account tester:secret:tester@newton.test
+//       --account work:workpw:me@work.test
+//       --message "tester=Ann <ann@example.org>|Café at eight|See you at the café.\nBring the map."
+//       --message "work=Boss <boss@work.test>|Quarterly report|Due on Friday."
+//       --spawn build/host/host/newton --display 320x480 --headless 150
+//       --store build/mail.store --erase --script src/host/demo/mail.ns
+//   (with NEWTON_MAIL=1)
+//
+// Leaves build/mail-slip.pgm.
+
+HostInclude("common.ns");			// waitFor, walkSetup, tapAt
+
+mlName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+mlWork := nil;									// the secondary account's id
+mlCafe := "Caf\u00E9\u at eight";				// (escaped: the script file is not read as UTF-8)
+
+mlYesNo := func(x) if x then "true" else "nil";
+
+mlInBoxItem := func(title) begin
+	local found := nil;
+	local soup := GetUnionSoup("InBox");
+	if soup then begin
+		local cursor := Query(soup, {type: 'index});
+		local e;
+		while e := cursor:Entry() do begin
+			if IsString(e.title) and StrEqual(e.title, title) then found := e;
+			cursor:Next();
+		end;
+	end;
+	found;
+end;
+
+mlOutBoxCount := func() begin
+	local soup := GetUnionSoup("OutBox");
+	local n := 0;
+	if soup then begin
+		local cursor := Query(soup, {type: 'index});
+		while cursor:Entry() do begin
+			n := n + 1;
+			cursor:Next();
+		end;
+	end;
+	n;
+end;
+
+mlNote := func(text) begin
+	local note := GetDataDefs('paperroll):MakeNewEntry();
+	note.data := [{viewStationery: 'para, viewBounds: SetBounds(0, 0, 230, 24), text: text}];
+	note;
+end;
+
+// a Note mailed as the slip's Send does
+mlSend := func(text, title, recipient, account) begin
+	local note := call mlNote with (text);
+	local item := GetRoot().|Mail:host|:NewItem(nil);
+	local format := nil;
+	foreach f in GetRouteFormats(note) do
+		if not format and f.dataTypes and SetContains(f.dataTypes, 'text) then format := f;
+	item.appSymbol := 'paperroll;
+	item.currentFormat := format.symbol;
+	format:SetupItem(item, {target: note, targetView: nil});
+	item.title := title;
+	item.toAddresses := [recipient];
+	item.mailAccount := account;
+	item.Connect := true;
+	Send('|Mail:host|, item);
+end;
+
+mlSlipFor := func(title) begin
+	foreach v in GetRoot():ChildViewFrames() do
+		if v.fields and IsString(v.fields.title) and StrEqual(v.fields.title, title) then
+			return v;
+	nil;
+end;
+
+mlText := func(item) item.body.data[0].text;
+
+mlSteps := [
+	func(next) begin
+		local mail := GetGlobalVar('|HostMail:host|);
+		local on := HostFeatureOn('mail);
+		Print("mail: HostFeatureOn " & call mlYesNo with (on) & ", the transport " & call mlYesNo with (GetRoot().|Mail:host|));
+		if not on then begin
+			Print("mail: done");
+			return HostQuit();
+		end;
+		Print("mail: the main account " & mail:MainAccount().address & ", signed in " & call mlYesNo with (HostMailHasPassword("main"))
+			& ", passwords kept in " & mail.config.keyStore);
+		call waitFor with ("mail: the waiting message", func() call mlInBoxItem with (mlCafe), next, 30);
+	end,
+	func(next) begin
+		local item := call mlInBoxItem with (mlCafe);
+		// (non-ASCII compared here, not printed: a Windows console shows it as it likes)
+		Print("mail: received the waiting message from " & item.mailFrom & " (" & item.mailFromName & ") for account "
+			& item.mailAccount & ", its subject decoded " & call mlYesNo with (StrEqual(item.title, mlCafe))
+			& ", the text " & (if StrPos(call mlText with (item), "See you at the caf\u00E9\u.", 0) and StrPos(call mlText with (item), "Bring the map.", 0) then "whole" else "MISSING"));
+		call mlSend with ("Shall we? \u00DC\un\u00EF\ucode is fine.", "Lunch on Friday", "tester@newton.test", nil);
+		call waitFor with ("mail: the mail sent to ourselves", func() call mlInBoxItem with ("Lunch on Friday"), next, 30);
+	end,
+	func(next) begin
+		local item := call mlInBoxItem with ("Lunch on Friday");
+		Print("mail: sent and received back \"" & item.title & "\" from " & item.mailFrom & ", the text "
+			& (if StrPos(item.mailText, "\u00DC\un\u00EF\ucode is fine.", 0) then "as written" else "CHANGED")
+			& ", the Out Box holds " & call mlOutBoxCount with ());
+		local mail := GetGlobalVar('|HostMail:host|);
+		local main := mail:MainAccount();
+		mlWork := mail:AddAccount({name: "Work", address: "me@work.test", smtp: main.smtp, imap: main.imap, user: "work",
+			addedBy: '|MailDemo:host|});
+		Print("mail: a second account added, its password kept " & call mlYesNo with (HostMailSetPassword(mlWork, "workpw"))
+			& ", " & Length(mail:Accounts()) & " accounts");
+		call waitFor with ("mail: the second account's mail", func() call mlInBoxItem with ("Quarterly report"), next, 30);
+	end,
+	func(next) begin
+		local item := call mlInBoxItem with ("Quarterly report");
+		Print("mail: received \"" & item.title & "\" from " & item.mailFrom & " for the second account "
+			& call mlYesNo with (StrEqual(item.mailAccount, mlWork)));
+		call mlSend with ("Sent from my Newton.", "From work", "tester@newton.test", mlWork);
+		call waitFor with ("mail: the mail from the second account", func() call mlInBoxItem with ("From work"), next, 30);
+	end,
+	func(next) begin
+		local item := call mlInBoxItem with ("From work");
+		Print("mail: sent from the second account, received from " & item.mailFrom);
+		// the password wrong: refused, and the item back in its slip
+		HostMailSetPassword(mlWork, "wrong");
+		call mlSend with ("This one fails.", "Refused", "tester@newton.test", mlWork);
+		call waitFor with ("mail: refused", func() call mlSlipFor with ("Refused"), func() AddDelayedCall(next, nil, 3000), 30);
+	end,
+	func(next) begin
+		local slip := call mlSlipFor with ("Refused");
+		Print("mail: refused, its slip open again " & call mlYesNo with (slip) & ": "
+			& GetRoot().|Mail:host|:TranslateError(-54102));
+		if slip then slip:Close();
+		call tapAt with (244, 275);			// (the alert's close box)
+		AddDelayedCall(next, nil, 1000);
+	end,
+	func(next) begin
+		// the routing slip as the Action button opens it
+		local note := call mlNote with ("On my way");
+		local item := GetRoot().|Mail:host|:NewItem(nil);
+		foreach f in GetRouteFormats(note) do
+			if not item.currentFormat and f.dataTypes and SetContains(f.dataTypes, 'text) then begin
+				item.currentFormat := f.symbol;
+				f:SetupItem(item, {target: note, targetView: nil});
+			end;
+		item.appSymbol := 'paperroll;
+		item.title := "On my way";
+		OpenRoutingSlip(item, {target: note, targetView: nil, appSymbol: 'paperroll});
+		call waitFor with ("mail: the routing slip", func() call mlSlipFor with ("On my way"), func() begin
+			AddDelayedCall(func() begin
+				ScreenSnapshot("build/mail-slip.pgm");
+				local slip := call mlSlipFor with ("On my way");
+				local from := nil;
+				foreach c in slip:ChildViewFrames() do if c.Shown then from := c;
+				Print("mail: the routing slip, From " & from:Shown() & ", of " & Length(from.accounts) & " accounts");
+				slip:Close();
+				call next with ();
+			end, nil, 3000);
+		end, 30);
+	end,
+	func(next) begin
+		local mail := GetGlobalVar('|HostMail:host|);
+		mail:SetMain(mlWork);
+		local chosen := mail:MainAccount().address;
+		mail:SetMain("main");
+		Print("mail: the main account made " & chosen & ", then " & mail:MainAccount().address & " again");
+		mail:RemoveAccount(mlWork);
+		Print("mail: the second account removed, " & Length(mail:Accounts()) & " left, its password kept "
+			& call mlYesNo with (HostMailHasPassword(mlWork)));
+		Print("mail: the Out Box holds " & call mlOutBoxCount with ());
+		Print("mail: done");
+		HostQuit();
+	end
+];
+
+mlRun := func(i) if i < Length(mlSteps) then call mlSteps[i] with (func() call mlRun with (i + 1));
+
+call walkSetup with (mlName, func() AddDelayedCall(func() call mlRun with (0), nil, 1000));

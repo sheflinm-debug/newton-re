@@ -196,6 +196,7 @@
 #include "HostAssist.h"
 #include "HostFiles.h"
 #include "HostPictures.h"
+#include "HostMail.h"
 #include "HostSettings.h"
 #include "HostMapping.h"
 #include "ROMImport.h"
@@ -694,6 +695,7 @@ NewtonPreMain(void)
 	HostInstallAssist();				// (the Assistant's engines, docs/modern/assistant.md)
 	HostInstallFiles();					// (the Files application, docs/modern/files.md)
 	HostInstallGallery();				// (the Gallery and the Camera, docs/modern/camera-gallery.md)
+	HostInstallMail();					// (Internet mail, docs/modern/transports.md)
 	HostInstallSettings();				// (the Host preferences panel, after Network Printers: the Prefs list's last)
 	HostInstallWordEngines();			// (the host's handwriting engines in the Handwriting Recognition slip)
 	// the boot sound (TNotebook::InitToolbox), which may still be playing,

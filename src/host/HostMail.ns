@@ -1,0 +1,459 @@
+// Internet mail, a transport of the In/Out Box (docs/modern/transports.md).
+// Compiled into newton (HostMailSource.cpp, made by src/cmake/EmbedText.cmake)
+// and evaluated at boot by HostInstallMail (host/HostMail.cpp); the frame is
+// kept in the global HostMail:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureMail - the Host
+// panel's "Internet mail", NEWTON_MAIL): the ROM's own mail was NewtonMail
+// and the eWorld-era services, long gone.  With this on, "Mail" is in the
+// Action button of every application with a text format, made as
+// comms/host/HostText.ns is (protoTransport @389, protoFullRouteSlip @655,
+// protoAddressPicker @259 over the Names file's e-mail addresses).
+//
+// Accounts (the owner's choice: one main account, signed in by default,
+// and secondary ones beside it):
+//   - the main account is the one the host is set up with (HostMailConfig:
+//     NEWTON_MAIL_ADDRESS, _SMTP, _IMAP, _USER, _NAME), id "main", unless
+//     another has been made the main one (SetMain);
+//   - secondary accounts are entries of the soup "Mail Accounts:host"
+//     ({id, name, address, smtp, imap, user, main, addedBy}), added and
+//     removed by any application or package - the third parties' way in:
+//         GetGlobalVar('|HostMail:host|):AddAccount({name, address, smtp,
+//             imap, user, addedBy: '|MyApp:SIG|})      ==> its id
+//         HostMailSetPassword(id, password)              (the host keeps it)
+//         ...:RemoveAccount(id), :SetMain(id), :Accounts(), :MainAccount()
+//   - passwords are never in a soup: the host keeps them (HostMailKeys.h:
+//     Windows' Credential Manager; in memory elsewhere, NOT YET a key store).
+// A message goes from the main account unless its slip's From line (the
+// item's mailAccount) says another.  Every account with an IMAP server is
+// checked for new mail every pollSeconds (NEWTON_MAIL_POLL, 300); each
+// message comes into the In Box as a Note - the ROM's Put Away files it in
+// the Notepad - its title the subject, its fromRef the sender, mailAccount
+// the account it came to.
+//
+// Sending: the item's text (its format's TextScript) to its recipients -
+// the To line's cards' e-mail addresses, and any addresses in the item's
+// toAddresses (for scripts) - by SMTP; completed sent, or kept in the Out
+// Box with the reason (TranslateError) when the server cannot be reached
+// or refuses it, to go again with the Out Box's Send.
+//
+// NOT YET: STARTTLS and OAuth (HostMailEngine.h), attachments either way,
+// a settings slip for accounts (the host's environment and the API above
+// only), the `send` and `network` permissions (permissions.md), replying
+// from the In Box.
+
+{
+	accountsSoup: "Mail Accounts:host",
+	config: nil,							// HostMailConfig(), read at Start
+
+	// --- accounts -----------------------------------------------------
+
+	Soup: func(make)
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(accountsSoup) then begin
+			if not make then return nil;
+			store:CreateSoupXmit(accountsSoup, [], nil);
+		end;
+		store:GetSoup(accountsSoup);
+	end,
+
+	StoredAccounts: func()
+	begin
+		local out := [];
+		local soup := :Soup(nil);
+		if not soup then return out;
+		local cursor := soup:Query({});
+		local e := cursor:Entry();
+		while e do begin
+			AddArraySlot(out, e);
+			e := cursor:Next();
+		end;
+		out;
+	end,
+
+	// every account: the host's main one first, then the stored ones
+	Accounts: func()
+	begin
+		local out := [];
+		if config and config.main then AddArraySlot(out, config.main);
+		foreach a in :StoredAccounts() do AddArraySlot(out, a);
+		out;
+	end,
+
+	AccountOf: func(id)
+	begin
+		if not IsString(id) then return nil;
+		foreach a in :Accounts() do
+			if StrEqual(a.id, id) then return a;
+		nil;
+	end,
+
+	// the main account: one marked main, else the host's, else the first
+	MainAccount: func()
+	begin
+		foreach a in :StoredAccounts() do
+			if a.main then return a;
+		local all := :Accounts();
+		if Length(all) > 0 then all[0] else nil;
+	end,
+
+	// an account added (by the user's setup, or any package) ==> its id
+	AddAccount: func(account)
+	begin
+		if not IsFrame(account) or not IsString(account.address) or StrLen(account.address) = 0 then
+			return nil;
+		local id := "account-" & NumberStr(Ticks()) & "-" & NumberStr(Random(1000, 9999));
+		local entry := {id: id,
+			name: if IsString(account.name) then account.name else "",
+			address: account.address,
+			smtp: if IsString(account.smtp) then account.smtp else "",
+			imap: if IsString(account.imap) then account.imap else "",
+			user: if IsString(account.user) then account.user else account.address,
+			main: nil,
+			addedBy: account.addedBy};
+		:Soup(true):AddXmit(entry, '|HostMail:host|);
+		Print("mail: an account added, " & entry.address);
+		id;
+	end,
+
+	RemoveAccount: func(id)
+	begin
+		foreach a in :StoredAccounts() do
+			if StrEqual(a.id, id) then begin
+				HostMailForgetPassword(id);
+				EntryRemoveFromSoupXmit(a, '|HostMail:host|);
+				return true;
+			end;
+		nil;
+	end,
+
+	// the main account chosen ("main": the host's own again)
+	SetMain: func(id)
+	begin
+		foreach a in :StoredAccounts() do begin
+			local want := StrEqual(a.id, id);
+			if (a.main and not want) or (want and not a.main) then begin
+				a.main := want;
+				EntryChangeXmit(a, '|HostMail:host|);
+			end;
+		end;
+		true;
+	end,
+
+	AccountName: func(a)
+		if StrLen(a.name) > 0 then a.name & " <" & a.address & ">" else a.address,
+
+	// --- the transport -----------------------------------------------
+
+	transport: {
+		_proto: @389,							// protoTransport
+		appSymbol: '|Mail:host|,
+		title: "Mail",
+		actionTitle: "Send",
+		dataTypes: ['text],
+		addressingClass: '|nameRef.email|,
+		icon: @760,
+		kSendFailed: -54102,
+		kSendPollMs: 300,
+		// (mail stays in the In Box, to be put away by the user - the
+		// owner's choice; the Notepad would otherwise take each at once.
+		// The In Box's preferences for Mail can change it: the ROM's
+		// preferencesForm sets 'dontAutoPutAway nil or 'never)
+		defaultConfiguration: {dontAutoPutAway: 'never},
+
+		mailFailure: nil,						// (not lastError: protoTransport keeps its own)
+		sending: nil,
+		sendJob: nil,
+		servedRequest: nil,
+		checking: nil,							// the fetch jobs running: [{job, account}]
+
+		routingSlip: {
+			_proto: @655,						// protoFullRouteSlip
+			viewSetupFormScript: func()
+			begin
+				self:ToRefCheck('|nameRef.email|);
+				inherited:?viewSetupFormScript();
+			end,
+			stepChildren: [
+				{
+					_proto: @259,				// protoAddressPicker
+					viewBounds: {left: 30, top: 50, right: -20, bottom: 63},
+					text: "To",
+					class: '|nameRef.email|,
+					selected: nil,
+					alternatives: nil,
+					useMemory: nil,
+					viewSetupFormScript: func()
+					begin
+						selected := fields.toRef;
+						alternatives := fields.alternatives;
+						inherited:?viewSetupFormScript();
+					end,
+					pickActionScript: func(index)
+					begin
+						inherited:?pickActionScript(index);
+						fields.toRef := selected;
+					end
+				},
+				{
+					// From: the account, the main one unless another is picked
+					viewClass: 74,
+					viewFlags: 513,
+					viewFormat: 0,
+					viewBounds: {left: 30, top: 68, right: -20, bottom: 84},
+					viewJustify: 48,			// vjParentFullH
+					accounts: nil,
+					viewSetupFormScript: func()
+					begin
+						local mail := GetGlobalVar('|HostMail:host|);
+						accounts := mail:Accounts();
+						if not fields.mailAccount then begin
+							local main := mail:MainAccount();
+							if main then fields.mailAccount := main.id;
+						end;
+					end,
+					Shown: func()
+					begin
+						local mail := GetGlobalVar('|HostMail:host|);
+						local a := mail:AccountOf(fields.mailAccount);
+						if a then mail:AccountName(a) else "No mail account";
+					end,
+					viewDrawScript: func()
+					begin
+						local b := :LocalBox();
+						:DrawShape(MakeText("From", 0, 1, 50, b.bottom), {font: 1058816});
+						:DrawShape(MakeText(StyledStrTruncate(:Shown(), b.right - 54, 10240), 52, 1, b.right, b.bottom), {font: 10240});
+						:DrawShape(MakeLine(50, b.bottom - 1, b.right, b.bottom - 1), {penSize: 1, penPattern: 3});
+					end,
+					viewClickScript: func(unit)
+					begin
+						local mail := GetGlobalVar('|HostMail:host|);
+						local names := [];
+						foreach a in accounts do AddArraySlot(names, mail:AccountName(a));
+						if Length(names) > 0 then DoPopup(names, 52, 16, self);
+						true;
+					end,
+					pickActionScript: func(index)
+					begin
+						fields.mailAccount := accounts[index].id;
+						:Dirty();
+					end
+				}
+			]
+		},
+
+		InstallScript: func(symbol)
+		begin
+			AddDelayedSend(self, 'CheckMail, [], 2000);
+		end,
+
+		TranslateError: func(error)
+		begin
+			if error = kSendFailed then
+				"The mail could not be sent" & (if mailFailure then ": " & mailFailure else ".")
+			else
+				inherited:TranslateError(error);
+		end,
+
+		ReceiveRequest: func(request)
+		begin
+			// (the In Box's Receive: a check now)
+			self:CheckNow();
+			nil;
+		end,
+
+		// --- sending ---
+
+		SendRequest: func(request)
+		begin
+			if request.cause = 'submit or sending then
+				return nil;
+			servedRequest := request;
+			self:SendNextItem();
+		end,
+
+		SendNextItem: func()
+		begin
+			local item;
+			try
+				item := self:ItemRequest(servedRequest)
+			onexception |evt.ex| do begin
+				self:HandleThrow();
+				item := nil;
+			end;
+			if not item then begin
+				sending := nil;
+				servedRequest := nil;
+				self:SetStatusDialog('idle, nil, nil);
+				return nil;
+			end;
+			sending := item;
+			local mail := GetGlobalVar('|HostMail:host|);
+			local account := mail:AccountOf(item.mailAccount);
+			if not account then account := mail:MainAccount();
+			local recipients := self:ItemAddresses(item);
+			local text := self:ItemText(item);
+			local subject := if IsString(item.title) then item.title else "";
+			local job := nil;
+			if not account then
+				mailFailure := "no mail account is set up"
+			else if Length(recipients) = 0 then
+				mailFailure := "nobody to send it to"
+			else begin
+				if not item.hidden then
+					self:SetStatusDialog('Sending, 'vStatusTitle, {statusText: "Sending…\u", titleText: subject});
+				job := HostMailSend(account, recipients, subject, if text then text else "");
+				if IsFrame(job) then begin
+					mailFailure := job.error;
+					job := nil;
+				end;
+			end;
+			if not job then
+				return self:Finished(nil);
+			sendJob := job;
+			AddDelayedSend(self, 'SendPoll, [], kSendPollMs);
+		end,
+
+		SendPoll: func()
+		begin
+			if not sendJob then return nil;
+			local state := HostMailPoll(sendJob);
+			if state = 'busy then
+				return AddDelayedSend(self, 'SendPoll, [], kSendPollMs);
+			sendJob := nil;
+			if IsFrame(state) then mailFailure := state.error;
+			self:Finished(state = true);
+		end,
+
+		Finished: func(sent)
+		begin
+			local item := sending;
+			sending := nil;
+			if sent then begin
+				Print("mail: sent \"" & item.title & "\"");
+				self:ItemCompleted(item, 'sent, nil);
+			end else begin
+				Print("mail: not sent - " & mailFailure);
+				self:ItemCompleted(item, nil, kSendFailed);
+			end;
+			self:SendNextItem();
+		end,
+
+		// the recipients' addresses: the To line's cards, and toAddresses
+		ItemAddresses: func(item)
+		begin
+			local out := [];
+			if IsArray(item.toAddresses) then
+				foreach a in item.toAddresses do
+					if IsString(a) and StrLen(a) > 0 then AddArraySlot(out, a);
+			if item.toRef then
+				foreach ref in item.toRef do begin
+					local address := nil;
+					if IsFrame(ref) and IsString(ref.email) then address := ref.email;
+					if not address and IsFrame(ref) and ref._alias then begin
+						local card := ResolveEntryAlias(ref._alias);
+						if card and IsString(card.email) then address := card.email;
+					end;
+					if address and StrLen(address) > 0 then AddArraySlot(out, address);
+				end;
+			out;
+		end,
+
+		// the item's text: its format's TextScript (a string body as it is)
+		ItemText: func(item)
+		begin
+			local text;
+			if IsString(item.body) then return Clone(item.body);
+			local format := GetCurrentFormat(item);
+			try
+				if format then
+					text := format:TextScript(item, if format.ResolveBody then format:ResolveBody(item) else item.body)
+			onexception |evt.ex| do
+				text := nil;
+			if text then Clone(text);
+		end,
+
+		// --- receiving ---
+
+		// the check every pollSeconds, while Mail is on
+		CheckMail: func()
+		begin
+			local mail := GetGlobalVar('|HostMail:host|);
+			if not HostFeatureOn('mail) or GetRoot().(appSymbol) <> self then return nil;
+			self:CheckNow();
+			AddDelayedSend(self, 'CheckMail, [], Max(5, mail.config.pollSeconds) * 1000);
+		end,
+
+		// every account with an IMAP server and a password asked for new mail
+		CheckNow: func()
+		begin
+			local mail := GetGlobalVar('|HostMail:host|);
+			if not checking then begin
+				checking := [];
+				foreach a in mail:Accounts() do
+					if StrLen(a.imap) > 0 and HostMailHasPassword(a.id) then begin
+						local job := HostMailFetch(a);
+						if IsFrame(job) then Print("mail: " & a.address & " not checked - " & job.error)
+						else AddArraySlot(checking, {job: job, account: a});
+					end;
+				if Length(checking) > 0 then AddDelayedSend(self, 'CheckPoll, [], kSendPollMs)
+				else checking := nil;
+			end;
+		end,
+
+		CheckPoll: func()
+		begin
+			if not checking then return nil;
+			local still := [];
+			foreach c in checking do begin
+				local state := HostMailPoll(c.job);
+				if state = 'busy then AddArraySlot(still, c)
+				else if IsFrame(state) then Print("mail: " & c.account.address & " not checked - " & state.error)
+				else foreach m in state do self:Received(m, c.account);
+			end;
+			checking := if Length(still) > 0 then still else nil;
+			if checking then AddDelayedSend(self, 'CheckPoll, [], kSendPollMs);
+		end,
+
+		// a message into the In Box, as a Note
+		Received: func(m, account)
+		begin
+			local who := if StrLen(m.fromName) > 0 then m.fromName else m.fromAddress;
+			local subject := if StrLen(m.subject) > 0 then m.subject else "(no subject)";
+			local text := "From: " & who & (if StrLen(m.fromName) > 0 then " <" & m.fromAddress & ">" else "")
+				& "\nTo: " & account.address & "\nSubject: " & subject & "\n\n" & m.text;
+			local lines := 1 + StrLen(text) div 30;
+			for i := 0 to StrLen(text) - 1 do
+				if text[i] = $\n then lines := lines + 1;
+			local height := lines * 16 + 8;
+			local body := {viewStationery: 'paperroll, class: 'paperroll, height: height + 16,
+				timestamp: Time(), _version: 2,
+				data: [{viewStationery: 'para, viewBounds: SetBounds(0, 0, 230, height), text: text}]};
+			local from := GetDataDefs('|nameRef.email|):MakeNameRef({}, '|nameRef.email|);
+			from.email := m.fromAddress;
+			if StrLen(m.fromName) > 0 then from.name := m.fromName;
+			local item := self:NewFromItem({appSymbol: 'paperroll, title: subject, body: body, timestamp: Time(),
+				mailFrom: m.fromAddress, mailFromName: m.fromName, mailAccount: account.id, mailDate: m.date,
+				mailText: m.text});
+			item.fromRef := from;
+			Print("mail: received \"" & subject & "\" from " & m.fromAddress & " for " & account.address);
+			self:ItemCompleted(item, 'Received, nil);
+		end
+	},
+
+	Start: func()
+	begin
+		config := HostMailConfig();
+		if not HostFeatureOn('mail) then
+			return :Stop();
+		if not GetRoot().(transport.appSymbol) then
+			RegTransport(transport.appSymbol, transport);
+	end,
+
+	Stop: func()
+	begin
+		if GetRoot().(transport.appSymbol) then
+			UnRegTransport(transport.appSymbol);
+	end
+}

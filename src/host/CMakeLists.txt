@@ -191,6 +191,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostGallery.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostMail.ns, the Mail transport (docs/modern/transports.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostMail.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp -DNAME=gHostMailSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostMail.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -223,8 +231,12 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                HostAssist.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
                HostFiles.cpp HostFilesOS.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostFilesSource.cpp
                HostPictures.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp
+               HostMail.cpp HostMailEngine.cpp HostMailFormat.cpp HostMailKeys.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial hal_host_image)
+if(WIN32)
+    target_link_libraries(newton PRIVATE advapi32)		# (the mail passwords' Credential Manager, HostMailKeys.cpp)
+endif()
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
 install(TARGETS newton DESTINATION bin)
 
@@ -1084,6 +1096,12 @@ set_tests_properties(host.NewtonHostSettings.kept PROPERTIES TIMEOUT 300
                      PASS_REGULAR_EXPRESSION "at boot beaming over the network on, kept on.*turned off, kept off.*docking on.*docking turned off.*docking turned on.*hostsettings: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|fell over|!!! Exception")
 
+# mail messages made and read (HostMailFormat.h: no Newton headers), against
+# messages as other mail programs write them
+add_executable(test_HostMail tests/test_HostMail.cpp HostMailFormat.cpp)
+target_include_directories(test_HostMail PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME host.MailFormat COMMAND test_HostMail)
+set_tests_properties(host.MailFormat PROPERTIES PASS_REGULAR_EXPRESSION "test_HostMail: all passed")
 # the sums that turn the display onto the reMarkable's panel image
 # (remarkable/PanelTurn.h: no platform headers, so tested on every host)
 add_executable(test_PanelTurn remarkable/tests/test_PanelTurn.cpp)
@@ -1599,6 +1617,35 @@ if(Python3_EXECUTABLE)
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
     set_tests_properties(${name} PROPERTIES TIMEOUT 200
                          ENVIRONMENT "NEWTON_ASSISTANT=${state}"
+                         PASS_REGULAR_EXPRESSION "${pass}"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
+  endforeach()
+endif()
+
+# Internet mail (docs/modern/transports.md; host/HostMail.ns): against
+# tools/host/fakemail.py, an SMTP and IMAP server of two accounts - the main
+# one signed in from the environment, the second added by the demo through
+# the accounts API - with a message waiting in each
+if(Python3_EXECUTABLE)
+  foreach(state 1 0)
+    if(state)
+      set(name host.NewtonMail)
+      set(pass "the main account tester@newton.test, signed in true, passwords kept in memory.*received the waiting message from ann@example.org .Ann. for account main, its subject decoded true, the text whole.*sent and received back .Lunch on Friday. from tester@newton.test, the text as written, the Out Box holds 0.*a second account added, its password kept true, 2 accounts.*received .Quarterly report. from boss@work.test for the second account true.*sent from the second account, received from me@work.test.*refused, its slip open again true: The mail could not be sent: the mail server refused the login: 535.*the routing slip, From Newton Tester <tester@newton.test>, of 2 accounts.*the main account made me@work.test, then tester@newton.test again.*the second account removed, 1 left, its password kept nil.*the Out Box holds 0.*mail: done")
+    else()
+      set(name host.NewtonMail.off)
+      set(pass "HostFeatureOn nil, the transport nil.*mail: done")
+    endif()
+    add_test(NAME ${name}
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/host/fakemail.py
+                     --account tester:secret:tester@newton.test --account work:workpw:me@work.test
+                     "--message=tester=Ann <ann@example.org>|Caf\\u00e9 at eight|See you at the caf\\u00e9.\\nBring the map."
+                     "--message=work=Boss <boss@work.test>|Quarterly report|Due on Friday."
+                     --spawn $<TARGET_FILE:newton> --display 320x480 --headless 150
+                     --store ${CMAKE_BINARY_DIR}/mail-${state}.store --erase
+                     --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/mail.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(${name} PROPERTIES TIMEOUT 220
+                         ENVIRONMENT "NEWTON_MAIL=${state}"
                          PASS_REGULAR_EXPRESSION "${pass}"
                          FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
   endforeach()

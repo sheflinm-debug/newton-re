@@ -4,8 +4,8 @@
 version of `marking.md`, checkboxes, lists and live details from `structure.md`, the
 record-only first version of `permissions.md`, a first `assistant.md`,
 the Files application and files as soup entries of `files.md`, and a first
-Gallery and Camera of `camera-gallery.md`, and the Files transport of
-`transports.md` (each page's State says what).** These pages
+Gallery and Camera of `camera-gallery.md`, and the Files and Internet mail
+transports of `transports.md` (each page's State says what).** These pages
 specify the additions the owner chose for a modern NewtonOS. Each builds on
 something the ROM already does and is an opt-in DEVIATION: with it off, the
 machine is the ROM's. They are Phase 6 of `docs/modernization-plan.md` and
