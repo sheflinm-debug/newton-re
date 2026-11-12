@@ -251,6 +251,198 @@
 		end
 	},
 
+	// --- the Files transport: "Save a copy to a folder" (transports.md) ---
+	//
+	// A transport of the In/Out Box as HostText.ns's is (protoTransport
+	// @389, its slip protoFullRouteSlip @655), registered while Files is on:
+	// the Action button of every application offers "Save to Files" for
+	// whatever has a 'text or 'frame format.  The slip's Folder line picks
+	// one of the Files folder's standard folders (Documents by default),
+	// its As line Text or Newton data (`saveAs`, 'text by default); the
+	// item's title names the file.  As text, the format's TextScript is
+	// written as name.txt (UTF-8); as Newton data, the item's data as
+	// name.nsof (the Newton's own streamed object format, Translate's
+	// 'flattener - what Beam sends).  A name taken gets a number.  A file that cannot be
+	// written leaves the item in the Out Box with the reason.
+	// NOT YET (transports.md): a note's ink and shapes as PDF or PNG, a
+	// picture as its own file, a .nsof put back into its application.
+
+	transport: {
+		_proto: @389,							// protoTransport
+		appSymbol: '|SaveToFiles:host|,
+		title: "Files",
+		actionTitle: "Save to Files",
+		dataTypes: ['text, 'frame],
+		icon: @760,
+		kWriteFailed: -54101,
+		defaultFolder: "Documents",
+
+		routingSlip: {
+			_proto: @655,						// protoFullRouteSlip
+			stepChildren: [
+				{
+					viewClass: 74,				// clView
+					viewFlags: 513,				// vVisible, vClickable
+					viewFormat: 0,
+					viewBounds: {left: 30, top: 50, right: -20, bottom: 66},
+					viewJustify: 48,				// vjParentFullH: the right edge from the slip's
+					// (the slip's parent is the root, not the transport: its own list)
+					folders: ["Documents", "Downloads", "Pictures", "Music", "Received"],
+					viewSetupFormScript: func()
+					begin
+						if not fields.saveFolder then fields.saveFolder := folders[0];
+					end,
+					viewDrawScript: func()
+					begin
+						local b := :LocalBox();
+						:DrawShape(MakeText("Folder", 0, 1, 50, b.bottom), {font: 1058816});
+						:DrawShape(MakeText(fields.saveFolder, 52, 1, b.right, b.bottom), {font: 10240});
+						:DrawShape(MakeLine(50, b.bottom - 1, b.right, b.bottom - 1), {penSize: 1, penPattern: 3});
+					end,
+					viewClickScript: func(unit)
+					begin
+						DoPopup(folders, 52, 16, self);
+						true;
+					end,
+					pickActionScript: func(index)
+					begin
+						fields.saveFolder := folders[index];
+						:Dirty();
+					end
+				},
+				{
+					// how: the text (.txt) or the Newton's own data (.nsof)
+					viewClass: 74,
+					viewFlags: 513,
+					viewFormat: 0,
+					viewBounds: {left: 30, top: 70, right: -20, bottom: 86},
+					viewJustify: 48,				// vjParentFullH: the right edge from the slip's
+					kinds: ['text, 'frame],
+					names: ["Text", "Newton data"],
+					viewSetupFormScript: func()
+					begin
+						if not fields.saveAs then fields.saveAs := 'text;
+					end,
+					viewDrawScript: func()
+					begin
+						local b := :LocalBox();
+						:DrawShape(MakeText("As", 0, 1, 50, b.bottom), {font: 1058816});
+						:DrawShape(MakeText(if fields.saveAs = 'frame then names[1] else names[0], 52, 1, b.right, b.bottom), {font: 10240});
+						:DrawShape(MakeLine(50, b.bottom - 1, b.right, b.bottom - 1), {penSize: 1, penPattern: 3});
+					end,
+					viewClickScript: func(unit)
+					begin
+						DoPopup(names, 52, 16, self);
+						true;
+					end,
+					pickActionScript: func(index)
+					begin
+						fields.saveAs := kinds[index];
+						:Dirty();
+					end
+				}
+			]
+		},
+
+		TranslateError: func(error)
+		begin
+			if error = kWriteFailed then
+				"The file could not be written."
+			else
+				inherited:TranslateError(error);
+		end,
+
+		ReceiveRequest: func(request) nil,
+
+		SendRequest: func(request)
+		begin
+			if request.cause = 'submit then
+				return nil;
+			local item;
+			loop begin
+				try
+					item := self:ItemRequest(request)
+				onexception |evt.ex| do begin
+					self:HandleThrow();
+					item := nil;
+				end;
+				if not item then break;
+				local path := self:SaveItem(item);
+				if path then
+					self:ItemCompleted(item, 'sent, nil)
+				else
+					self:ItemCompleted(item, nil, kWriteFailed);
+			end;
+			self:SetStatusDialog('idle, nil, nil);
+		end,
+
+		// the item written ==> its path, nil when it could not be
+		SaveItem: func(item)
+		begin
+			local files := GetGlobalVar('|HostFiles:host|);
+			local folder := if IsString(item.saveFolder) then item.saveFolder else defaultFolder;
+			local name := self:FileName(item.title);
+			local format := GetCurrentFormat(item);
+			local types := if format then format.dataTypes else nil;
+			local body := item.body;
+			if format and format.ResolveBody then
+				try body := format:ResolveBody(item) onexception |evt.ex| do nil;
+			HostFilesRoot();
+			// (the formats of Notes and Names take both: the item's saveAs,
+			// the slip's "As" line, chooses - text unless it says 'frame)
+			local wantText := IsString(body) or (types and SetContains(types, 'text) and item.saveAs <> 'frame);
+			if wantText then begin
+				local text := if IsString(body) then body else nil;
+				if not text then
+					try text := format:TextScript(item, body) onexception |evt.ex| do text := nil;
+				if not IsString(text) then return nil;
+				local path := self:FreePath(folder, name, "txt");
+				if HostFilesWriteText(path, text) then begin
+					Print("files: saved " & path);
+					return path;
+				end;
+				return nil;
+			end;
+			if not IsFrame(body) then return nil;
+			local flat := nil;
+			try flat := Translate(body, 'flattener, nil, nil) onexception |evt.ex| do flat := nil;
+			if not flat then return nil;
+			local path := self:FreePath(folder, name, "nsof");
+			if HostFilesWriteBinary(path, flat) then begin
+				Print("files: saved " & path & ", " & Length(flat) & " bytes");
+				return path;
+			end;
+			nil;
+		end,
+
+		// a title made a file name: what no file system takes left out
+		FileName: func(title)
+		begin
+			local out := "";
+			if IsString(title) then
+				for i := 0 to StrLen(title) - 1 do begin
+					local c := title[i];
+					if not (c = $/ or c = $\\ or c = $: or c = $* or c = $? or c = $" or c = $< or c = $> or c = $| or Ord(c) < 32) then
+						out := out & c;
+				end;
+			out := GetGlobalVar('|HostFiles:host|):Trim(out);
+			while StrLen(out) > 0 and out[StrLen(out) - 1] = $. do out := SubStr(out, 0, StrLen(out) - 1);
+			if StrLen(out) = 0 then "Untitled" else out;
+		end,
+
+		// folder/name.ending, or with " 2", " 3", ... when the name is taken
+		FreePath: func(folder, name, ending)
+		begin
+			local path := folder & "/" & name & "." & ending;
+			local n := 2;
+			while HostFilesExists(path) do begin
+				path := folder & "/" & name & " " & NumberStr(n) & "." & ending;
+				n := n + 1;
+			end;
+			path;
+		end
+	},
+
 	// whether notes can be made of a kind
 	IsText: func(kind)
 	begin
@@ -603,6 +795,7 @@
 		if not HostFeatureOn('files) then begin
 			local e := :IconEntry();
 			if e then EntryRemoveFromSoupXmit(e, nil);
+			if GetRoot().(transport.appSymbol) then UnRegTransport(transport.appSymbol);
 		end
 		else if not :IconEntry() then begin
 			local extras := GetUnionSoup(@307.name);
@@ -610,6 +803,9 @@
 				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Files", app: appSymbol,
 					icon: :MakeIcon(), labels: nil, sequence: 33, _tagList: ['_icon, '_noBackup]}, nil);
 		end;
+		// "Save to Files" in every application's Action button
+		if HostFeatureOn('files) and not GetRoot().(transport.appSymbol) then
+			RegTransport(transport.appSymbol, transport);
 	end,
 
 	Stop: func()
@@ -617,6 +813,7 @@
 		// (the soup is left; the next Start brings it into step)
 		generation := generation + 1;
 		UnRegFindApps(appSymbol);
+		if GetRoot().(transport.appSymbol) then UnRegTransport(transport.appSymbol);
 		UnRegSoupChange(soupName, appSymbol);
 		local e := :IconEntry();
 		if e then EntryRemoveFromSoupXmit(e, nil);

@@ -68,8 +68,9 @@ a host folder, text made notes; every file an entry of the `Files` soup,
 kept in step with the folder, found by Find, renamed, moved and put in
 the trash from the soup - `files.md`); a first Gallery and Camera (the
 Files soup's pictures, a fake camera, a PNG and baseline JPEG decoder of
-our own - `camera-gallery.md`); next transports, sync, web and malleable in
-the README's order, with the file store proper (`TFileStore`, drives as
+our own - `camera-gallery.md`); the Files transport, "Save to Files" in
+every application's Action button (`transports.md`); next the other
+transports (mail first), then sync, web and malleable in the README's order, with the file store proper (`TFileStore`, drives as
 stores), foreign formats and a real camera still open.  The owner's open question: Newton as an OS over a Linux kernel
 or on bare metal, and the first device - `modernization-plan.md` is to be
 reworked around the answer.

@@ -192,6 +192,10 @@ step); two files whose names differ only in case are one entry (the
 reconciliation keys entries by symbol); a change made with no application
 symbol is not seen (the ROM sends no notification for it).
 
+The Files transport ("Save to Files" in every application's Action
+button, `transports.md`) writes into the folder: text as `.txt`, Newton
+data as `.nsof`.
+
 Not built: `TFileStore` and drives as stores; emptying the trash, and
 renaming, moving and new folders from the Files application itself;
 arrivals landing in Downloads/Received; Newton data as files; the

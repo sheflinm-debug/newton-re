@@ -1530,6 +1530,29 @@ foreach(state 1 0)
                        FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 endforeach()
 
+# the Files transport, "Save to Files" (docs/modern/transports.md;
+# host/HostFiles.ns's transport): Notes and a Names card saved into a folder
+# of the build's, emptied first
+foreach(state 1 0)
+  if(state)
+    set(name host.NewtonSaveFiles)
+    set(pass "HostFeatureOn true, the transport true.*Documents/Shopping list.txt reads .Milk, eggs and bread.*saved as Shopping list 2.txt, reading .Apples.*Downloads/Alice Ng.nsof true.*refused, its slip open again true, .The file could not be written.*the routing slip, its folder Documents, as text.*Downloads picked, its folder Downloads.*Action menu offers Files true, beside Beam true.*the Out Box holds 0.*savefiles: done")
+  else()
+    set(name host.NewtonSaveFiles.off)
+    set(pass "HostFeatureOn nil, the transport nil.*savefiles: done")
+  endif()
+  add_test(NAME ${name}.clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/savefiles-test-${state})
+  set_tests_properties(${name}.clean PROPERTIES FIXTURES_SETUP savefiles_clean_${state})
+  add_test(NAME ${name} COMMAND newton --display 320x480 --headless 120
+           --store ${CMAKE_BINARY_DIR}/savefiles-${state}.store --erase
+           --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/savefiles.ns
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+  set_tests_properties(${name} PROPERTIES TIMEOUT 180 FIXTURES_REQUIRED savefiles_clean_${state}
+                       ENVIRONMENT "NEWTON_FILES=${state};NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/savefiles-test-${state}"
+                       PASS_REGULAR_EXPRESSION "${pass}"
+                       FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+endforeach()
+
 # the Camera and the Gallery (docs/modern/camera-gallery.md; host/HostGallery.ns):
 # the fake camera's pictures (demo/camera, made by tools/host/picturefixtures.py)
 # taken into a folder of the build's, emptied first; Files itself off - the

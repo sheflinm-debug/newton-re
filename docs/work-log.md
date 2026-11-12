@@ -9,6 +9,18 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - the Files transport
+
+On branch `modern`, with "Files" on: a transport (`HostFiles.ns`'s
+`transport`) that puts "Files" in every application's Action menu and
+saves the routed item into a folder of the Files folder, as text
+(`TextScript`, `.txt`) or as Newton data (`Translate`'s `'flattener`,
+`.nsof`), chosen on the slip with the folder. Found on the way: `DoPopup`
+is a global function; a slip child's negative right edge needs
+`viewJustify: 48`; the Action menu draws its items (find them with
+`foreach ... deeply`); Notes' and Names' formats take both `'text` and
+`'frame`, so the transport cannot tell from the format which is wanted.
+
 ## 2026-11-12: Modern additions - the Gallery and the Camera
 
 On branch `modern`, behind the Host panel's "Camera and Gallery"

@@ -1,0 +1,191 @@
+// The Files transport, "Save to Files" (docs/modern/transports.md;
+// host/HostFiles.ns's transport).  With NEWTON_FILES=1 and NEWTON_FILES_ROOT
+// a folder of the build's: a Note routed with its text format is saved as
+// Documents/<title>.txt and reads back as written; the same title again is
+// "<title> 2.txt"; a Names card routed with its frame format into Downloads
+// is saved as NSOF (what Beam sends); a folder that climbs out of the Files
+// folder is refused and the item comes back to its routing slip with the
+// reason; the routing slip as the Action button opens it shows the Folder
+// and As lines, the Folder line's pop-up its folders; the Notepad's own
+// Action button offers "Files" beside Beam.  Without it there is no
+// transport (ctests host.NewtonSaveFiles and ...off).
+//
+//   NEWTON_FILES=1 NEWTON_FILES_ROOT=build/savefiles-demo build/host/host/newton
+//       --display 320x480 --headless 120 --script src/host/demo/savefiles.ns
+//
+// Leaves build/savefiles-slip.pgm, -popup.pgm and -action.pgm.
+
+HostInclude("common.ns");			// waitFor, walkSetup, tapAt, typeKey
+HostInclude("walkhelpers.ns");		// viewWithText
+
+sfName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+sfYesNo := func(x) if x then "true" else "nil";
+
+sfOutBoxCount := func() begin
+	local soup := GetUnionSoup("OutBox");
+	local n := 0;
+	if soup then begin
+		local cursor := Query(soup, {type: 'index});
+		while cursor:Entry() do begin
+			n := n + 1;
+			cursor:Next();
+		end;
+	end;
+	n;
+end;
+
+// the first route format of the target that takes this data type
+sfFormat := func(target, type) begin
+	local found := nil;
+	foreach f in GetRouteFormats(target) do
+		if not found and f.dataTypes and SetContains(f.dataTypes, type) then
+			found := f;
+	found;
+end;
+
+// routed as the slip's Send does: the format's SetupItem, Send
+sfRoute := func(target, appSym, type, title, folder) begin
+	local item := GetRoot().|SaveToFiles:host|:NewItem(nil);
+	local format := call sfFormat with (target, type);
+	item.appSymbol := appSym;
+	item.currentFormat := format.symbol;
+	format:SetupItem(item, {target: target, targetView: nil});
+	item.title := title;
+	item.saveFolder := folder;
+	item.saveAs := type;
+	item.Connect := true;
+	Send('|SaveToFiles:host|, item);
+	format;
+end;
+
+sfNote := func(text) begin
+	local note := GetDataDefs('paperroll):MakeNewEntry();
+	note.data := [{viewStationery: 'para, viewBounds: SetBounds(0, 0, 230, 24), text: text}];
+	note;
+end;
+
+// a pop-up menu open with this item (its items are drawn, not views: an
+// array of the open views' holding the string, or a frame whose item is it)
+sfMenuHas := func(title) begin
+	local found := nil;
+	local look;
+	look := func(v) begin
+		foreach slot, value deeply in v do
+			if not found and IsArray(value) and slot <> 'viewChildren and slot <> 'stepChildren then
+				foreach x in value do
+					if (IsString(x) and StrEqual(x, title)) or (IsFrame(x) and IsString(x.item) and StrEqual(x.item, title)) then
+						found := v;
+		if not found then
+			foreach child in v:ChildViewFrames() do
+				if not found then call look with (child);
+	end;
+	foreach v in GetRoot():ChildViewFrames() do
+		if not found then call look with (v);
+	found;
+end;
+
+sfSlipFor := func(title) begin
+	foreach v in GetRoot():ChildViewFrames() do
+		if v.fields and IsString(v.fields.title) and StrEqual(v.fields.title, title) then
+			return v;
+	nil;
+end;
+
+sfSteps := [
+	func(next) begin
+		local on := HostFeatureOn('files);
+		Print("savefiles: HostFeatureOn " & call sfYesNo with (on) & ", the transport " & call sfYesNo with (GetRoot().|SaveToFiles:host|));
+		if not on then begin
+			Print("savefiles: done");
+			return HostQuit();
+		end;
+		local format := call sfRoute with (call sfNote with ("Milk, eggs and bread"), 'paperroll, 'text, "Shopping: list?", "Documents");
+		Print("savefiles: the Note's text format " & SPrintObject(format.symbol));
+		call waitFor with ("savefiles: the note saved", func() HostFilesExists("Documents/Shopping list.txt"), next, 30);
+	end,
+	func(next) begin
+		Print("savefiles: Documents/Shopping list.txt reads \"" & HostFilesReadText("Documents/Shopping list.txt", 200) & "\"");
+		call sfRoute with (call sfNote with ("Apples"), 'paperroll, 'text, "Shopping list", "Documents");
+		call waitFor with ("savefiles: the second note saved", func() HostFilesExists("Documents/Shopping list 2.txt"), next, 30);
+	end,
+	func(next) begin
+		Print("savefiles: the same title again saved as Shopping list 2.txt, reading \"" & HostFilesReadText("Documents/Shopping list 2.txt", 200) & "\"");
+		local card := GetUnionSoup("Names"):AddToDefaultStoreXmit({class: 'person, cardType: 0,
+			name: {class: 'person, first: "Alice", last: "Ng"}, sorton: "Ng Alice", phones: ["0400 000 002"]}, nil);
+		local format := call sfRoute with (card, 'cardfile, 'frame, "Alice Ng", "Downloads");
+		Print("savefiles: the card's frame format " & SPrintObject(format.symbol));
+		call waitFor with ("savefiles: the card saved", func() HostFilesExists("Downloads/Alice Ng.nsof"), next, 30);
+	end,
+	func(next) begin
+		Print("savefiles: Downloads/Alice Ng.nsof " & call sfYesNo with (HostFilesExists("Downloads/Alice Ng.nsof")));
+		// a folder that climbs out of the Files folder: refused, the item back
+		// in its slip (a "send now" item, as protoTransport's ItemCompleted does)
+		call sfRoute with (call sfNote with ("Nowhere"), 'paperroll, 'text, "Escape", "../outside");
+		call waitFor with ("savefiles: refused", func() call sfSlipFor with ("Escape"), func() AddDelayedCall(next, nil, 3000), 30);
+	end,
+	func(next) begin
+		local slip := call sfSlipFor with ("Escape");
+		Print("savefiles: refused, its slip open again " & call sfYesNo with (slip) & ", \""
+			& GetRoot().|SaveToFiles:host|:TranslateError(-54101) & "\"");
+		if slip then slip:Close();
+		call tapAt with (244, 275);			// (the alert's close box)
+		AddDelayedCall(next, nil, 1000);
+	end,
+	func(next) begin
+		// the routing slip as the Action button opens it
+		local note := call sfNote with ("On my way");
+		local item := GetRoot().|SaveToFiles:host|:NewItem(nil);
+		local format := call sfFormat with (note, 'text);
+		item.currentFormat := format.symbol;
+		format:SetupItem(item, {target: note, targetView: nil});
+		item.appSymbol := 'paperroll;
+		item.title := "On my way";
+		OpenRoutingSlip(item, {target: note, targetView: nil, appSymbol: 'paperroll});
+		call waitFor with ("savefiles: the routing slip", func() call sfSlipFor with ("On my way"), func() begin
+			AddDelayedCall(func() begin
+				ScreenSnapshot("build/savefiles-slip.pgm");
+				local slip := call sfSlipFor with ("On my way");
+				Print("savefiles: the routing slip, its folder " & slip.fields.saveFolder & ", as " & slip.fields.saveAs);
+				// the Folder line's pop-up, and Downloads picked from it
+				local line := nil;
+				foreach c in slip:ChildViewFrames() do if c.folders then line := c;
+				local box := line:GlobalBox();
+				call tapAt with (box.left + 60, (box.top + box.bottom) div 2);
+				AddDelayedCall(func() begin
+					ScreenSnapshot("build/savefiles-popup.pgm");
+					line:pickActionScript(1);
+					Print("savefiles: Downloads picked, its folder " & slip.fields.saveFolder);
+					slip:Close();
+					call next with ();
+				end, nil, 1500);
+			end, nil, 3000);
+		end, 30);
+	end,
+	func(next) begin
+		// a word written on the Notepad's page, then its Action button (the
+		// envelope at the top right): its menu offers Save to Files among
+		// the ROM's own
+		call tapAt with (150, 100);
+		foreach c in [4, 34] do call typeKey with (c);			// "hi"
+		AddDelayedCall(func() begin
+			call tapAt with (310, 28);
+			call waitFor with ("savefiles: the Action menu", func() call sfMenuHas with ("Files"), func() begin
+				Print("savefiles: the Notepad's Action menu offers Files " & call sfYesNo with (call sfMenuHas with ("Files"))
+					& ", beside Beam " & call sfYesNo with (call sfMenuHas with ("Beam")));
+				ScreenSnapshot("build/savefiles-action.pgm");
+				call tapAt with (150, 300);			// (away: the menu closes)
+				AddDelayedCall(next, nil, 1000);
+			end, 10);
+		end, nil, 1500);
+	end,
+	func(next) begin
+		Print("savefiles: the Out Box holds " & call sfOutBoxCount with ());
+		Print("savefiles: done");
+		HostQuit();
+	end
+];
+
+sfRun := func(i) if i < Length(sfSteps) then call sfSteps[i] with (func() call sfRun with (i + 1));
+
+call walkSetup with (sfName, func() AddDelayedCall(func() call sfRun with (0), nil, 1000));

@@ -2,8 +2,9 @@
 	File:		host/HostFiles.h
 
 	Contains:	DEVIATION (host addition; docs/modern/files.md): the Files
-				application (HostFiles.ns) and the natives it reads the
-				host's folder with.  See HostFiles.cpp.
+				application (HostFiles.ns), its soup, the Files transport
+				(docs/modern/transports.md) and the natives they use.  See
+				HostFiles.cpp.
 */
 
 #ifndef __HOSTFILES_H

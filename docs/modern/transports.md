@@ -1,6 +1,7 @@
 # Transports: new ways to send, in every application at once
 
-**Status: a proposal.**
+**Status: a proposal; the first transport built (2026-11-12) - Files,
+"Save a copy to a folder" (State).**
 
 ## What Newton has
 
@@ -56,3 +57,50 @@ directory.
 1. Which transports, and in what order.
 2. Mail: one account or several; whether received mail goes to the In Box
    or to a mail application like Messages.
+
+## State (2026-11-12, branch `modern`)
+
+Built: the **Files** transport, registered while the Host panel's "Files"
+is on (`NEWTON_FILES`; `src/host/HostFiles.ns`'s `transport`, made as
+`comms/host/HostText.ns` is, from `protoTransport` @389 and
+`protoFullRouteSlip` @655). Every application whose data has a `'text` or
+`'frame` route format - the ROM's Notepad and Names among them - now has
+"Files" in its Action button's menu beside Print, Fax and Beam, with no
+change to the application.
+
+- The slip adds two lines: **Folder** (a pop-up of the Files folder's
+  standard folders - Documents, Downloads, Pictures, Music, Received;
+  Documents by default; the item's `saveFolder`) and **As** (Text or
+  Newton data; the item's `saveAs`). The slip's button is "Save to Files".
+- The item's title names the file, less what no file system takes (`/ \ :
+  * ? " < > |`, control characters, trailing full stops); "Untitled" when
+  nothing is left; a name taken gets " 2", " 3", ...
+- As text: the route format's `TextScript`, written as `<title>.txt`
+  (UTF-8, LF). As Newton data: the item's data flattened with
+  `Translate(data, 'flattener, nil, nil)` - the Newton Streamed Object
+  Format Beam sends - and written as `<title>.nsof` (native
+  `HostFilesWriteBinary`). The formats of Notes and Names take both data
+  types, which is why the slip asks, rather than the format deciding.
+- A file that cannot be written (a folder climbing out of the Files folder,
+  a full disk) completes the item with the error -54101, "The file could
+  not be written."; a "send now" item comes back to its routing slip, as
+  protoTransport does for every transport. The Files folder never goes
+  away, so nothing waits in the Out Box for a carrier.
+- The file joins the Files soup at the next scan (`files.md`), so Find
+  and the Files application see it.
+- Demo `src/host/demo/savefiles.ns`, ctests `host.NewtonSaveFiles` and
+  `.off`: two Notes saved as text (the second " 2"), a Names card saved as
+  NSOF into Downloads, a refused folder, the slip with its two lines and
+  the Folder pop-up, and the Notepad's own Action menu offering Files.
+
+Not built (NOT YET): a note's ink and shapes as PDF or PNG, a picture as
+its own file (the Gallery has no Action button yet), a `.nsof` opened from
+Files put back into its application, the `send` permission for routing
+without a tap; Internet mail, Mesh, Another Newton and Share to the host.
+
+Found on the way: `DoPopup(items, left, top, view)` is a global function,
+not a view method; a slip's child with a negative right edge needs
+`viewJustify: 48` (`vjParentFullH`) or it has no width; the Action
+menu's items are drawn, not views, and are found in the menu view's
+inherited slots (`foreach ... deeply`); the menu shows a transport's
+`title`, its slip's button the `actionTitle`.

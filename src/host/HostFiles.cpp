@@ -21,6 +21,9 @@
 				  HostFilesWriteText(path, text) - a file made or replaced
 					  with the text (UTF-8, LF line ends).
 				  HostFilesMakeFolder(path).
+				  HostFilesWriteBinary(path, binary) - a file made or
+					  replaced with a binary's bytes (an NSOF the Files
+					  transport made).
 				  HostFilesScan(signature) - every file of the tree, for
 					  the Files soup; nil when nothing has changed since
 					  the signature given.
@@ -302,6 +305,27 @@ FHostFilesWriteText(RefArg /*rcvr*/, RefArg relative, RefArg text)
 }
 
 
+// HostFilesWriteBinary(path, binary) - a file made or replaced with a
+// binary object's bytes as they are (the Files transport's NSOF).
+static Ref
+FHostFilesWriteBinary(RefArg /*rcvr*/, RefArg relative, RefArg binary)
+{
+	if (!IsBinary(binary) || IsString(binary))
+		return NILREF;
+	char* full = HostFilesFullPath(relative);
+	if (full == NULL)
+		return NILREF;
+	long size = Length(binary);
+	char* copy = (char*) malloc((size_t) size + 1);
+	memcpy(copy, BinaryData(binary), (size_t) size);		// (copied first: the heap may move it)
+	int err = HostFilesWrite(full, copy, size);
+	fprintf(stderr, "[files] %s %s (%ld bytes)\n", err == 0 ? "wrote" : "could not write", full, size);
+	free(copy);
+	free(full);
+	return MAKEBOOLEAN(err == 0);
+}
+
+
 static Ref
 FHostFilesMakeFolder(RefArg /*rcvr*/, RefArg relative)
 {
@@ -500,6 +524,7 @@ HostInstallFiles(void)
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesList")), RefVar(MakeCFunction((void*) FHostFilesList, 1, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesReadText")), RefVar(MakeCFunction((void*) FHostFilesReadText, 2, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesWriteText")), RefVar(MakeCFunction((void*) FHostFilesWriteText, 2, nil)));
+	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesWriteBinary")), RefVar(MakeCFunction((void*) FHostFilesWriteBinary, 2, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesMakeFolder")), RefVar(MakeCFunction((void*) FHostFilesMakeFolder, 1, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesScan")), RefVar(MakeCFunction((void*) FHostFilesScan, 1, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFilesMove")), RefVar(MakeCFunction((void*) FHostFilesMove, 2, nil)));
