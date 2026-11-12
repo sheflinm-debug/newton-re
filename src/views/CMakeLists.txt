@@ -41,6 +41,7 @@ add_library(views STATIC
     ParagraphInsertAreas.cpp
     ParagraphView.cpp
     Rerecognize.cpp
+    CaretWriting.cpp
     GaugeView.cpp
     PolygonView.cpp
     PolygonTraced.cpp

@@ -1392,6 +1392,20 @@ set_tests_properties(host.NewtonKeepInk.off PROPERTIES TIMEOUT 180
                      PASS_REGULAR_EXPRESSION "KeepsInk nil, written and read: ton.*shown as writing: ton, the range ending at 3.*shown as text: ton, the range ending at 3.*keep-ink: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain")
 
+# the caret's pop-up with ink kept (views/CaretWriting.h): a strip of two
+# cells under the space bar, the scribble showing the note as its writing
+# and "Abc" as text again; .off, the ROM's pop-up of two items
+add_test(NAME host.NewtonKeepInkMenu COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink-menu.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInkMenu PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_KEEP_INK=1"
+                     PASS_REGULAR_EXPRESSION "KeepsInk true, the pop-up has 3 items.*scribble tapped: <ink>.*Abc tapped: ton.*keep-ink-menu: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain")
+add_test(NAME host.NewtonKeepInkMenu.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/keep-ink-menu.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonKeepInkMenu.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_KEEP_INK=0"
+                     PASS_REGULAR_EXPRESSION "KeepsInk nil, the pop-up has 2 items.*keep-ink-menu: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain")
+
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,
 # VoteOnWordUnit, HandleUnit)

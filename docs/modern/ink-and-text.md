@@ -14,16 +14,27 @@ Built, behind `NEWTON_KEEP_INK=1` (off by default):
   `KeepsInk()` and `ShowWritingAs(view, start, stop, 'ink | 'text)`
   (nil, nil: the whole paragraph), which answers where the range ends now.
 
+- the menu: the pop-up a tap on the caret brings up (the punctuation
+  grid and the space bar) has a strip of two cells under the space bar,
+  "Abc" and a scribble (`views/CaretWriting.h`; the owner's choice of
+  menu). "Abc" shows writing as text, the scribble shows text as its
+  writing: the selected words of every paragraph of the note when
+  something is selected (a word partly selected counts whole), the whole
+  note when nothing is. With ink not kept the pop-up is the ROM's.
+
 `src/host/demo/keep-ink.ns` writes "ton" on the Notepad, shows it as its
 writing and as text again, and leaves a picture of each (ctests
 `host.NewtonKeepInk` and `.off`; `test_Views`' `TestInsertItems`).
+`src/host/demo/keep-ink-menu.ns` does the same through the pop-up, with
+the pen (ctests `host.NewtonKeepInkMenu` and `.off`; picture
+`build/keep-ink-menu.pgm`).
 
-Not built: the menu item (it needs the owner's word on which menu - the
-corrector a double tap opens, or the Notepad's Recognize button), Find
-over readings, reading ink in the background, an edited word's ink
-dropped as it is edited (today it is only refused when shown as writing),
-a style change over a kept word, the preferences, a whole note or a
-selection across paragraphs in one call.
+Not built: Find over readings, reading ink in the background, an edited
+word's ink dropped as it is edited (today it is only refused when shown
+as writing), a style change over a kept word, the preferences. Not
+checked with the pen: the selection case (the unit test selects with
+`HiliteText`; whether the caret is still there to tap while a selection
+is up in every application has not been tried on screen).
 
 ## What Newton has
 

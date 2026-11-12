@@ -85,6 +85,7 @@
 #include <string.h>
 #include "host/RomBugs.h"
 #include "host/KeepInk.h"
+#include "CaretWriting.h"
 #include "InkReading.h"
 
 static int failures = 0;
@@ -5702,6 +5703,51 @@ TestInsertItems()
 	// a range that cuts a word leaves it alone
 	EXPECT(ShowRangeAs(p, 0, 2, true) == 2);
 	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
+
+	// the caret pop-up's strip (CaretWriting.h): with a selection, the
+	// words it touches - "h" selected, the whole of "hi" is shown as its
+	// writing and "yo" is left as it is
+	p->HiliteText(1, 1, false);
+	EXPECT(NOTNIL(p->FirstHilite()));
+	EXPECT(ShowWritingAround(p, true) == 1);
+	{
+		const UniChar* shown = GetCString(RefVar(p->Text()));
+		EXPECT(Ustrlen(shown) == 5 && shown[0] == 'a' && shown[1] == kInkWordChar
+			   && shown[2] == 'y' && shown[3] == 'o' && shown[4] == 'b');
+	}
+	// with none, all of it: as text, then as writing, then as text again
+	p->RemoveAllHilites();
+	EXPECT(ShowWritingAround(p, false) == 1);
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
+	p->RemoveAllHilites();
+	EXPECT(ShowWritingAround(p, true) == 1);
+	EXPECT(Ustrlen(GetCString(RefVar(p->Text()))) == 4);
+	p->RemoveAllHilites();
+	ShowWritingAround(p, false);
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
+	// the pop-up itself: the ROM's items and the strip after them, a
+	// pick of any other item going to the pop-up it was made from
+	{
+		Eval("stripPopped := nil");
+		RefVar romPopup(Eval("{popup: [\"Undo\", \"Copy\"], pickActionScript: func(i) stripPopped := i}"));
+		RefVar with(CaretPopupWithWriting(romPopup));
+		RefVar items(GetFrameSlot(with, RSSYMpopup));
+		EXPECT(IsArray(items) && Length(items) == 3);
+		if (IsArray(items) && Length(items) == 3)
+		{
+			RefVar strip(GetArraySlot(items, 2));
+			EXPECT(IsFrame(strip) && RINT(RefVar(GetFrameSlot(strip, RSSYMwidth))) == 2
+				   && Length(RefVar(GetFrameSlot(strip, RSSYMbits))) == 16 + 19 * 8);
+		}
+		RefVar pickArgs(MakeArray(1));
+		SetArraySlot(pickArgs, 0, RefVar(MAKEINT(1)));
+		DoMessage(with, RSSYMpickactionscript, pickArgs);
+		EXPECT(RINT(Eval("stripPopped")) == 1);
+		// off, the pop-up is the ROM's own
+		SetKeepInk(false);
+		EXPECT(EQRef(RefVar(CaretPopupWithWriting(romPopup)), romPopup));
+		SetKeepInk(true);
+	}
 	SetKeepInk(false);
 
 	// and the undo the insert made puts the paragraph back

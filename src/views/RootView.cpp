@@ -8,6 +8,7 @@
 */
 
 #include "RootView.h"
+#include "CaretWriting.h"
 #include "NewtonGestalt.h"
 #include "Inker.h"			// BusyBoxSend
 #include "SoundSettings.h"	// FClicker
@@ -1353,6 +1354,11 @@ TRootView::DoCaretClick(TUnitPublic* unit)
 			{
 				RefVar popup(fCaretView->GetVar(RSSYM_caretpopup));
 				poppedUp = NOTNIL(popup);
+				// DEVIATION (host, KeepInk; CaretWriting.h): with ink kept
+				// after recognition the pop-up has a strip more, showing
+				// the words as text or as their writing
+				if (poppedUp)
+					popup = CaretPopupWithWriting(popup);
 				if (poppedUp)
 				{
 					RefVar items(GetProtoVariable(popup, RSSYMpopup, nil));
