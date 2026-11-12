@@ -1,6 +1,34 @@
 # Structure and meaning recognised from what is written
 
-**Status: a proposal.**
+**Status: a first piece built (2026-11-12): checkboxes in a plain note,
+behind the Host panel's "Checkboxes and lists" (`NEWTON_STRUCTURE=1`/`=0`
+overrides; `host/Features.h`). The rest is a proposal.**
+
+## State
+
+- **A to-do item inside a plain note**, not a checklist note: a paragraph
+  whose data frame has a slot `check` ('open or 'done) has a checkbox drawn
+  in the margin to its left (`views/MarginMarks.h`); a tap on the box ticks
+  it or unticks it, and the note is saved (`HostMarks.ns`'s `ToggleDone`).
+  A MessagePad ignores the slot.
+- **Made from the caret's pop-up:** a row "[] To do" under the space bar
+  makes the paragraphs selected, or the caret's, items - or, when all are
+  items already, plain paragraphs again (`ToggleChecks`).
+- **Offered from what is written:** a paragraph whose text begins with a
+  checkbox written as text - "[ ]", "[]", "[x]" (ticked), or U+2610-2612 -
+  is shown a dotted box in the margin: the offer. It is only drawn, never
+  stored, so writing on or leaving it changes nothing. A tap on it accepts:
+  the box written is taken out of the text and the paragraph made an item
+  (ticked for "[x]"). This is the page's "offers, not conversions".
+- Demo `src/host/demo/checkboxes.ns`, ctests `host.NewtonCheckboxes` and
+  `.off`; pictures `build/checkboxes-offer.pgm`, `build/checkboxes.pgm`.
+
+Not built yet: a square *drawn* before a line (it needs the stroke
+positions: the structure recogniser proper, below); lists (a dash or
+number then words); live details; headings, sums, tables, diagrams; a
+tap accepting being undone by a scrub (Undo does undo the text change).
+
+## The proposal
 
 ## What Newton has
 

@@ -1444,6 +1444,21 @@ set_tests_properties(host.NewtonMarking.off PROPERTIES TIMEOUT 180
                      PASS_REGULAR_EXPRESSION "HostFeatureOn nil, the pop-up has 2 items.*marking: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 
+# checkboxes in a note (docs/modern/structure.md; views/MarginMarks.h): the
+# caret's pop-up makes a paragraph a to-do item, its box ticked and
+# unticked with a tap, a box written as text offered and accepted; .off,
+# the ROM's pop-up and margin
+add_test(NAME host.NewtonCheckboxes COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/checkboxes.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonCheckboxes PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_STRUCTURE=1"
+                     PASS_REGULAR_EXPRESSION "HostFeatureOn true, the pop-up has 3 items.*To do picked, the paragraph Open.*the box tapped, Done.*tapped again, Open.*written .x. milk, the paragraph none.*the offer tapped, the text milk, the paragraph Done.*checkboxes: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+add_test(NAME host.NewtonCheckboxes.off COMMAND newton --display 320x480 --headless 120 --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/checkboxes.ns WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonCheckboxes.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_STRUCTURE=0"
+                     PASS_REGULAR_EXPRESSION "HostFeatureOn nil, the pop-up has 2 items.*a tap in the margin, the paragraph none.*checkboxes: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+
 # the correction and word-unit methods on a paragraph, the correction info
 # and a view of its own (GetAlternatives, Extract, insert, HandleRawInk,
 # VoteOnWordUnit, HandleUnit)

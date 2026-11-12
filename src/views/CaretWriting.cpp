@@ -66,6 +66,17 @@ static const char* const kMarkArt[kArtRows] = {	// a star, and "Mark"
 	"#.......#...........................",
 };
 
+static const char* const kCheckArt[kArtRows] = {	// a box, and "To do"
+	"########..#####..............#..........",
+	"#......#....#................#..........",
+	"#......#....#...###.......####..###.....",
+	"#......#....#..#...#.....#...#.#...#....",
+	"#......#....#..#...#.....#...#.#...#....",
+	"#......#....#..#...#.....#...#.#...#....",
+	"#......#....#...###.......####..###.....",
+	"########................................",
+};
+
 // A grid item of one row: `columns` cells across the 43 pixels, framed
 // with the ROM's dither, the art of cell i drawn from x = lefts[i].
 static Ref
@@ -126,6 +137,14 @@ MakeStripItem(void)
 	static const char* const* const kArts[2] = { kTextArt, kWritingArt };
 	static const long kLefts[2] = { 3, 23 };
 	return MakeArtItem(2, kArts, kLefts);
+}
+
+static Ref
+MakeCheckItem(void)
+{
+	static const char* const* const kArts[1] = { kCheckArt };
+	static const long kLefts[1] = { 4 };
+	return MakeArtItem(1, kArts, kLefts);
 }
 
 static Ref
@@ -294,14 +313,18 @@ FCaretWritingPick(RefArg rcvr, RefArg picked)
 			ShowWritingAround(gRootView->fCaretView, ISINT(x) && RINT(x) == 1);
 			return NILREF;
 		}
-		if (ISINT(index) && ISINT(mark) && RINT(index) == RINT(mark))
+		RefVar check(GetFrameSlot(rcvr, RefVar(Intern((char*) "checkIndex"))));
+		Boolean isMark = ISINT(index) && ISINT(mark) && RINT(index) == RINT(mark);
+		Boolean isCheck = ISINT(index) && ISINT(check) && RINT(index) == RINT(check);
+		if (isMark || isCheck)
 		{
+			// (the margin's: HostMarks.ns's ToggleMarks or ToggleChecks)
 			RefVar marks(GetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) "HostMarks:host"))));
 			if (IsFrame(marks))
 			{
 				RefVar args(MakeArray(1));
 				SetArraySlot(args, 0, RefVar(ParagraphsToMark(gRootView->fCaretView)));
-				DoMessage(marks, RefVar(Intern((char*) "ToggleMarks")), args);
+				DoMessage(marks, RefVar(Intern((char*) (isMark ? "ToggleMarks" : "ToggleChecks"))), args);
 			}
 			return NILREF;
 		}
@@ -317,7 +340,8 @@ CaretPopupWithWriting(RefArg popup)
 {
 	Boolean writing = KeepInk();
 	Boolean marking = HostFeature(kFeatureMarking);
-	if ((!writing && !marking) || !IsFrame(popup))
+	Boolean structure = HostFeature(kFeatureStructure);
+	if ((!writing && !marking && !structure) || !IsFrame(popup))
 		return popup;
 	RefVar items(GetProtoVariable(popup, RSSYMpopup, nil));
 	if (!IsArray(items))
@@ -332,6 +356,11 @@ CaretPopupWithWriting(RefArg popup)
 	{
 		SetFrameSlot(with, RefVar(Intern((char*) "writingIndex")), RefVar(MAKEINT(Length(all))));
 		AddArraySlot(all, RefVar(MakeStripItem()));
+	}
+	if (structure)
+	{
+		SetFrameSlot(with, RefVar(Intern((char*) "checkIndex")), RefVar(MAKEINT(Length(all))));
+		AddArraySlot(all, RefVar(MakeCheckItem()));
 	}
 	if (marking)
 	{

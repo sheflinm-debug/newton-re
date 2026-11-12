@@ -22,8 +22,7 @@
 #include "InkShapes.h"
 #include "InkReading.h"
 #include "host/KeepInk.h"
-#include "host/Features.h"
-#include "Draw.h"
+#include "MarginMarks.h"
 #include "StrokeBundle.h"
 #include "DrawShape.h"
 #include "Locale.h"			// GetPreference
@@ -612,7 +611,7 @@ void
 TEditView::PostDraw(Rect& drawBounds)
 {
 	TView::PostDraw(drawBounds);
-	DrawMarks();				// DEVIATION (host, Features.h's kFeatureMarking): below
+	DrawMargin(this);			// DEVIATION (host, MarginMarks.h): marks and checkboxes beside paragraphs
 	if (gDontDrawHilites || gRootView->fHiliter != this || Printing())
 		return;
 	Rect bounds;
@@ -637,49 +636,6 @@ TEditView::PostDraw(Rect& drawBounds)
 		bits.Draw(bounds, bounds, srcXor, nil);
 	}
 }
-
-// DEVIATION (host, host/Features.h's kFeatureMarking; docs/modern/
-// marking.md): not in the ROM.  A paragraph whose data frame has a
-// `marked` slot (the time it was marked, HostMarks.ns) has a small star
-// drawn in the margin to its left, level with its first line.
-void
-TEditView::DrawMarks(void)
-{
-	if (!HostFeature(kFeatureMarking) || fChildren == nil || Printing())
-		return;
-	static const char* const kStar[7] = {
-		"...#...",
-		"...#...",
-		"#######",
-		".#####.",
-		"..###..",
-		".##.##.",
-		"#.....#" };
-	RefVar markedSym(Intern((char*) "marked"));
-	long children = fChildren->Count();
-	for (long i = 0; i < children; i++)
-	{
-		TView* child = fChildren->At((short) i);
-		if (child == nil || !child->DerivedFrom(clParagraphView))
-			continue;
-		RefVar data(child->DataFrame());
-		if (!IsFrame(data) || ISNIL(GetFrameSlot(data, markedSym)))
-			continue;
-		long left = child->viewBounds.left - 10;
-		if (left < viewBounds.left + 1)
-			left = viewBounds.left + 1;
-		long top = child->viewBounds.top + 3;
-		for (long y = 0; y < 7; y++)
-			for (long x = 0; x < 7; x++)
-				if (kStar[y][x] == '#')
-				{
-					Rect dot;
-					SetRect(&dot, (short) (left + x), (short) (top + y), (short) (left + x + 1), (short) (top + y + 1));
-					PaintRect(&dot);
-				}
-	}
-}
-
 
 // ROM 0x000aa860 ActivateSelection__9TEditViewFUc
 // Losing the caret loses the selection with it.
@@ -1201,6 +1157,8 @@ TEditView::PositionCaret(Point& pt, Boolean click)
 void
 TEditView::HandleTap(Point& pt)
 {
+	if (TapMargin(this, pt))		// DEVIATION (host, MarginMarks.h): a checkbox or a star in the margin
+		return;
 	PositionCaret(pt, true);
 }
 

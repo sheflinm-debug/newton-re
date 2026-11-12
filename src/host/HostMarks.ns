@@ -26,6 +26,12 @@
 //   row opens the note in the Notepad (its ShowFoundItem, as Find does); a
 //   tap on a row's star takes the mark off.
 //
+// The same frame keeps the margin's other inhabitant, checkboxes
+// (docs/modern/structure.md, host/Features.h's kFeatureStructure): a
+// paragraph's `check` slot, 'open or 'done, drawn and tapped by
+// views/MarginMarks.cpp, made and ticked here (ToggleChecks, ToggleDone),
+// the note saved by SaveNoteOf.
+//
 // A departure from marking.md, which kept the marks in a soup of their
 // own: the list is made by reading the notes when Marked opens.  That is
 // slower with thousands of notes, but cannot disagree with them; a soup
@@ -307,6 +313,46 @@
 		end;
 		:Refresh();
 		not all;
+	end,
+
+	// The note a paragraph view is in saved, and the page drawn again (a
+	// mark or a checkbox changed in its data frame).
+	SaveNoteOf: func(para)
+	begin
+		local e := :EntryOf(para);
+		if e then EntryChangeXmit(e, nil);
+		if para._parent then para._parent:Dirty();
+		:Refresh();
+	end,
+
+	// Checkboxes (docs/modern/structure.md; views/MarginMarks.h): the
+	// paragraph views given made to-do items - or, when all of them are
+	// items already, plain paragraphs again.  ==> true for made items.
+	ToggleChecks: func(paras)
+	begin
+		local forms := [];
+		foreach p in paras do
+			if IsFrame(p) and IsFrame(p._proto) and not IsReadOnly(p._proto) then
+				AddArraySlot(forms, p._proto);
+		if Length(forms) = 0 then return nil;
+		local all := true;
+		foreach f in forms do
+			if not f.check then all := nil;
+		foreach f in forms do
+			if all then RemoveSlot(f, 'check)
+			else if not f.check then f.check := 'open;
+		foreach p in paras do :SaveNoteOf(p);
+		not all;
+	end,
+
+	// a to-do item ticked, or unticked
+	ToggleDone: func(para)
+	begin
+		local f := para._proto;
+		if not IsFrame(f) or IsReadOnly(f) or not f.check then return nil;
+		f.check := if f.check = 'done then 'open else 'done;
+		:SaveNoteOf(para);
+		f.check;
 	end,
 
 	// one mark of the list taken off

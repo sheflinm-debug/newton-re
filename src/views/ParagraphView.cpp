@@ -61,6 +61,7 @@
 #include "NewtonMemory.h"
 #include "host/RomBugs.h"
 #include "host/KeepInk.h"
+#include "MarginMarks.h"
 #include "InkReading.h"
 #include <string.h>
 
@@ -2308,6 +2309,10 @@ HitsHilitedInkWord(TView* view, Point pt)
 void
 TParagraphView::HandleTap(Point& pt)
 {
+	// DEVIATION (host, MarginMarks.h): a paragraph of a page reaches into
+	// the page's margin, where its star or checkbox is drawn
+	if (fParent != nil && fParent->ClassID() == clEditView && TapMargin(fParent, pt))
+		return;
 	RemoveAllHilites();
 	if (fFlags & (vReadOnly | vWriteProtected))
 		return;

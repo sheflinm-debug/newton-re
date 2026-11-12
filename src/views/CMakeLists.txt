@@ -42,6 +42,7 @@ add_library(views STATIC
     ParagraphView.cpp
     Rerecognize.cpp
     CaretWriting.cpp
+    MarginMarks.cpp
     GaugeView.cpp
     PolygonView.cpp
     PolygonTraced.cpp
