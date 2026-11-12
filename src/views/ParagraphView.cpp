@@ -60,6 +60,8 @@
 #include "Interpreter.h"
 #include "NewtonMemory.h"
 #include "host/RomBugs.h"
+#include "host/KeepInk.h"
+#include "InkReading.h"
 #include <string.h>
 
 
@@ -1258,6 +1260,11 @@ TParagraphView::GetStyleForInsertion(long offset, Boolean useNextStyle, Boolean 
 		SetFrameSlot(RefVar(gVarFrame), RSSYMnextstyle, RefVar(NILREF));
 	if (ISNIL(style))
 		style = GetDefaultViewStyle();
+	// DEVIATION (host, KeepInk): what is written beside a word that keeps
+	// its ink is written in that word's font, not in its style - the ink
+	// belongs to the word alone
+	if (KeepInk() && StyleKeepsInk(style))
+		style = PlainFontFrame(style);
 	return style;
 }
 
@@ -4656,6 +4663,87 @@ GrowInsertStyles(RefArg styles, long* used, long add)
 }
 
 
+/*------------------------------------------------------------------------------
+	I n k   k e p t   a f t e r   r e c o g n i t i o n
+	DEVIATION (host, host/KeepInk.h; docs/modern/ink-and-text.md): none of
+	this is in the ROM.  A word the recogniser turned into text keeps the
+	writing it came from in the style of its characters: a font frame with
+	one more slot, `ink`, holding the ink word with the text as its
+	reading (ink/InkReading.h).  A MessagePad reads the frame as a font.
+------------------------------------------------------------------------------*/
+
+// Whether a style is a font frame carrying a word's ink.
+Boolean
+StyleKeepsInk(RefArg style)
+{
+	return IsFrame(style) && IsInkWord(RefVar(GetFrameSlot(style, RSSYMink)));
+}
+
+
+// The font of a style and nothing else, as a frame of its own: what text
+// typed beside a kept word is written in, and what a kept word's style
+// is made from.  nil for a style that is no font (an ink word).
+Ref
+PlainFontFrame(RefArg style)
+{
+	if (ISINT(style))
+	{
+		// a packed font opened out into the frame that says the same
+		// (IntFontToFontParms makes font *parms*, the family a number)
+		RefVar family(GetFontFamilySym(style));
+		if (ISNIL(family))
+			return NILREF;
+		RefVar opened(AllocateFrame());
+		SetFrameSlot(opened, RSSYMfamily, family);
+		SetFrameSlot(opened, RSSYMface, RefVar(MAKEINT(GetFontFace(style))));
+		SetFrameSlot(opened, RSSYMsize, RefVar(MAKEINT(GetFontSize(style))));
+		return opened;
+	}
+	if (!IsFrame(style))
+		return NILREF;
+	RefVar plain(AllocateFrame());
+	RefVar slot(GetFrameSlot(style, RSSYMfamily));
+	if (NOTNIL(slot))
+		SetFrameSlot(plain, RSSYMfamily, slot);
+	slot = GetFrameSlot(style, RSSYMface);
+	if (NOTNIL(slot))
+		SetFrameSlot(plain, RSSYMface, slot);
+	slot = GetFrameSlot(style, RSSYMsize);
+	if (NOTNIL(slot))
+		SetFrameSlot(plain, RSSYMsize, slot);
+	return plain;
+}
+
+
+// The last `count` characters of the styles being built - a word that
+// has just gone in as text - given a run of their own whose style keeps
+// the word's ink.  The font is the one the word was appended in.
+static void
+KeepInkInLastRun(RefArg styles, long* used, long count, RefArg ink, RefArg word)
+{
+	if (*used < 2 || count <= 0)
+		return;
+	long at = *used - 2;
+	Long length = RINT(RefVar(GetArraySlotRef(styles, at)));
+	if (length < count)
+		return;
+	RefVar style(PlainFontFrame(RefVar(GetArraySlotRef(styles, at + 1))));
+	if (ISNIL(style))
+		return;
+	SetFrameSlot(style, RSSYMink, RefVar(InkWordWithReading(ink, word)));
+	if (length == count)
+		SetArraySlot(styles, at + 1, style);
+	else
+	{
+		SetArraySlot(styles, at, RefVar(MAKEINT(length - count)));
+		at = *used;
+		GrowInsertStyles(styles, used, 2);
+		SetArraySlot(styles, at, RefVar(MAKEINT(count)));
+		SetArraySlot(styles, at + 1, style);
+	}
+}
+
+
 // ROM 0x0016fa08 EqualStyles__FRC6RefVarT1
 // Whether two style runs are the same style, which is what decides
 // whether a new run is needed at all.  Two font frames are the same when
@@ -4665,6 +4753,12 @@ Boolean
 EqualStyles(RefArg a, RefArg b)
 {
 	if (!IsFrame(a) || !IsFrame(b))
+		return EQRef(a, b);
+	// DEVIATION (host, KeepInk): a font frame that carries the ink of the
+	// word written in it is that word's own style - the same as another
+	// only when it is the same object, or two words' runs would be merged
+	// and one word's ink lost.
+	if (KeepInk() && (StyleKeepsInk(a) || StyleKeepsInk(b)))
 		return EQRef(a, b);
 	if (!EQRef(RefVar(GetFrameSlot(a, RSSYMsize)), RefVar(GetFrameSlot(b, RSSYMsize))))
 		return false;
@@ -4998,6 +5092,25 @@ TParagraphView::HandleInsertItems(RefArg spec)
 				AppendInsertItem(before, insertOffset, text, styles,
 								 &usedText, &usedStyles, addSpace,
 								 itemText, itemStyles, defaultStyle, &delimiter);
+				// DEVIATION (host, KeepInk): the writing the word came
+				// from stays with it - the info's ink, or its strokes
+				// packed as the ink branch below packs them
+				if (KeepInk() && IsString(itemText))
+				{
+					RefVar kept(GetFrameSlot(item, RSSYMink));
+					if (ISNIL(kept))
+					{
+						kept = GetFrameSlot(item, RSSYMstrokes);
+						if (NOTNIL(kept))
+							kept = CompressStrokes(kept);
+					}
+					if (NOTNIL(kept) && !IsInkWord(kept) && IsFrame(kept))
+						kept = GetFrameSlot(kept, RSSYMink);
+					if (IsInkWord(kept))
+						KeepInkInLastRun(styles, &usedStyles,
+										 Length(itemText) / (long) sizeof(UniChar) - 1,
+										 kept, itemText);
+				}
 			}
 			else
 			{

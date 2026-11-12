@@ -6,6 +6,7 @@
 */
 
 #include <stdio.h>
+#include "host/KeepInk.h"
 #include "Rerecognize.h"
 #include "ParagraphView.h"
 #include "PolygonView.h"
@@ -177,6 +178,15 @@ ParagraphViewWordHandler(TUnit* unit, ULong arg)
 				long count = Length(GetFrameSlotRef(info, RSSYMwords));
 				if (allowsInkWords || count != 0)
 					item = info;
+				// DEVIATION (host, KeepInk): the ink word being read is
+				// the writing the text keeps - the very binary, not the
+				// unit's strokes packed again
+				if (KeepInk() && count != 0)
+				{
+					RefVar was(((TParagraphView*) view)->GetStyleAtOffset(start, nil, nil));
+					if (IsInkWord(was))
+						SetFrameSlot(info, RSSYMink, was);
+				}
 			}
 			if (ISNIL(item))
 				item = MakeString("");

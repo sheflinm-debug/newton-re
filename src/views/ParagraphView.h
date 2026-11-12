@@ -154,6 +154,9 @@ ULong	GetInputViewTextFlags(ULong textFlags, ULong viewFlags);	// ROM 0x00261d2c
 
 // Whether a font spec is a font frame (it names a family) rather than
 // something else a style slot may hold.
+// DEVIATION (host, host/KeepInk.h): ink kept after recognition
+Boolean	StyleKeepsInk(RefArg style);						// a font frame carrying its word's ink
+Ref		PlainFontFrame(RefArg style);						// a style's font alone, as a frame of its own
 Boolean	IsFontFrame(RefArg fontSpec);						// ROM 0x00179f08 IsFontFrame__FRC6RefVar
 
 // The style record a run of a paragraph is laid out and drawn with.

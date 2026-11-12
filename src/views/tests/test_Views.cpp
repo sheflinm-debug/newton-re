@@ -84,6 +84,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "host/RomBugs.h"
+#include "host/KeepInk.h"
+#include "InkReading.h"
 
 static int failures = 0;
 #define EXPECT(cond) do { if (!(cond)) { failures++; fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)
@@ -5557,6 +5559,109 @@ TestInsertItems()
 	Refresh();
 	DoInsertItems(p, RefVar(MAKEINT(42)), false, true, 1, 0, true, RefVar(NILREF));
 	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ab")) == 0);
+
+	// DEVIATION (host, KeepInk; docs/modern/ink-and-text.md): a word read
+	// into text keeps the writing it came from.  Off, an info that brings
+	// its ink along goes in as the ROM puts it: text, in the font around it.
+	Eval("SetValue(ctxII, 'text, \"ab\")");
+	Refresh();
+	RefVar keptInfo(AllocateFrame());
+	RefVar keptWords(MakeArray(1));
+	RefVar keptReading(AllocateFrame());
+	SetFrameSlot(keptReading, RSSYMword, RefVar(MakeString("hi")));
+	SetFrameSlot(keptReading, RSSYMindex, RefVar(MAKEINT(0)));		// (a reading says where in its list it stood)
+	SetArraySlot(keptWords, 0, keptReading);
+	SetFrameSlot(keptInfo, RSSYMwords, keptWords);
+	SetFrameSlot(keptInfo, RSSYMflags, RefVar(MAKEINT(0)));
+	SetFrameSlot(keptInfo, RSSYMink, word);
+	DoInsertItems(p, keptInfo, false, true, 1, 0, true, RefVar(NILREF));
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahib")) == 0);
+	styles = p->Styles();
+	if (IsArray(styles))
+		for (long i = 1; i < Length(styles); i += 2)
+			EXPECT(!StyleKeepsInk(RefVar(GetArraySlot(styles, i))));
+
+	// on: the two characters are a run of their own, in the same font,
+	// whose style carries the ink with "hi" as its reading
+	SetKeepInk(true);
+	Eval("SetValue(ctxII, 'text, \"ab\")");
+	Refresh();
+	SetFrameSlot(keptInfo, RSSYMflags, RefVar(MAKEINT(0)));
+	DoInsertItems(p, keptInfo, false, true, 1, 0, true, RefVar(NILREF));
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahib")) == 0);
+	styles = p->Styles();
+	EXPECT(IsArray(styles));
+	if (IsArray(styles))
+	{
+		long keptRuns = 0, offset = 0;
+		for (long i = 0; i + 1 < Length(styles); i += 2)
+		{
+			long runLength = RINT(RefVar(GetArraySlot(styles, i)));
+			RefVar runStyle(GetArraySlot(styles, i + 1));
+			if (StyleKeepsInk(runStyle))
+			{
+				keptRuns++;
+				EXPECT(offset == 1 && runLength == 2);
+				RefVar ink(GetFrameSlot(runStyle, RSSYMink));
+				RefVar itsReading(InkWordReading(ink));
+				EXPECT(NOTNIL(itsReading) && Ustrcmp(GetCString(itsReading), Uni("hi")) == 0);
+				// the writing itself, stroke for stroke
+				EXPECT(InkWordStrokesSize(ink) == InkWordStrokesSize(word));
+				EXPECT(memcmp(BinaryData(ink), BinaryData(word), InkWordStrokesSize(word)) == 0);
+				// and the font of the text before it
+				RefVar itsFont(PlainFontFrame(runStyle));
+				RefVar firstFont(PlainFontFrame(RefVar(GetArraySlot(styles, 1))));
+				EXPECT(!StyleKeepsInk(itsFont) && EqualStyles(itsFont, firstFont));
+			}
+			offset += runLength;
+		}
+		EXPECT(keptRuns == 1);
+	}
+	// what is typed after the word is in its font but not in its style
+	RefVar after(p->GetStyleForInsertion(3, false, false));
+	EXPECT(!StyleKeepsInk(after));
+
+	// two words put in together, one straight after the other, keep their
+	// own ink: two runs side by side, not one
+	RefVar secondInfo(AllocateFrame());
+	RefVar secondWords(MakeArray(1));
+	RefVar secondReading(AllocateFrame());
+	SetFrameSlot(secondReading, RSSYMword, RefVar(MakeString("yo")));
+	SetFrameSlot(secondReading, RSSYMindex, RefVar(MAKEINT(0)));		// (a reading says where in its list it stood)
+	SetArraySlot(secondWords, 0, secondReading);
+	SetFrameSlot(secondInfo, RSSYMwords, secondWords);
+	SetFrameSlot(secondInfo, RSSYMflags, RefVar(MAKEINT(0)));
+	SetFrameSlot(secondInfo, RSSYMink, word);
+	Eval("SetValue(ctxII, 'text, \"ab\")");
+	Refresh();
+	SetFrameSlot(keptInfo, RSSYMflags, RefVar(MAKEINT(0)));
+	RefVar both(MakeArray(2));
+	SetArraySlot(both, 0, keptInfo);
+	SetArraySlot(both, 1, secondInfo);
+	DoInsertItems(p, both, false, true, 1, 0, true, RefVar(NILREF));
+	EXPECT(Ustrcmp(GetCString(RefVar(p->Text())), Uni("ahiyob")) == 0);
+	styles = p->Styles();
+	if (IsArray(styles))
+	{
+		long keptRuns = 0, offset = 0;
+		for (long i = 0; i + 1 < Length(styles); i += 2)
+		{
+			long runLength = RINT(RefVar(GetArraySlot(styles, i)));
+			RefVar runStyle(GetArraySlot(styles, i + 1));
+			if (StyleKeepsInk(runStyle))
+			{
+				RefVar itsReading(InkWordReading(RefVar(GetFrameSlot(runStyle, RSSYMink))));
+				EXPECT(runLength == 2);
+				EXPECT(NOTNIL(itsReading)
+					   && Ustrcmp(GetCString(itsReading), offset == 1 ? Uni("hi") : Uni("yo")) == 0);
+				EXPECT(offset == 1 || offset == 3);
+				keptRuns++;
+			}
+			offset += runLength;
+		}
+		EXPECT(keptRuns == 2);
+	}
+	SetKeepInk(false);
 
 	// and the undo the insert made puts the paragraph back
 	Eval("SetValue(ctxII, 'text, \"one four\")");

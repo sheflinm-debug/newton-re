@@ -2,6 +2,14 @@
 
 **Status: a proposal.**
 
+## State (2026-11-11)
+
+Built, behind `NEWTON_KEEP_INK=1` (off by default): a reading inside an
+ink word, and a word read into text keeping its ink - as the pen writes
+it or by deferred recognition. Not built: the menu item that shows a word
+the other way, Find over readings, reading ink in the background, the
+preferences, a demo of the whole.
+
 ## What Newton has
 
 A paragraph holds text and *ink words* side by side. An ink word reflows
@@ -39,7 +47,10 @@ wherever the word goes - cut, pasted, beamed, saved - with nothing beside
 it to keep in step. Ink the ROM's code re-encodes (two words joined, one
 split) comes out without a reading and is read again.
 
-*Shown as text* (not built; the format still to be proved). The word is
+*Shown as text* (built for a word as it goes in: `KeepInk()` in
+`host/KeepInk.h`, `NEWTON_KEEP_INK=1`; `StyleKeepsInk`, `PlainFontFrame`
+and the insert path in `views/ParagraphView.cpp`, the deferred reading in
+`views/Rerecognize.cpp`; `test_Views`' `TestInsertItems`). The word is
 its characters, in a style run of their own whose font frame carries the
 ink: `{family, face, size, ink: <the ink word, its reading the text>}`. A
 MessagePad reads the frame as a font and ignores the slot. Three things
@@ -53,6 +64,12 @@ must hold on the host for the ink to stay with its word:
   edited, and its ink is dropped.
 On a MessagePad the first does not hold, so editing such a note there can
 lose kept ink (never text).
+
+The first two are built. The third - noticing an edited word and dropping
+its ink - is not, and nothing yet shows a word the other way or looks for
+a reading; what a MessagePad makes of the frame's extra slot is still to
+be tried with `--rom`. Not yet handled either: a style change over a kept
+word (the new font frame has no `ink`).
 
 **Reading ink in the background.** An ink word with no reading is
 recognised when the machine is idle, a few words at a time, and only the
