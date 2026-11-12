@@ -1,0 +1,154 @@
+// The Assistant's engines (docs/modern/assistant.md).  Compiled into newton
+// (HostAssistSource.cpp, made by src/cmake/EmbedText.cmake) and evaluated
+// at boot by HostInstallAssist (host/HostAssist.cpp); the frame is kept in
+// the global HostAssist:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureAssistant - the Host
+// panel's "Assistant model", NEWTON_ASSISTANT): the ROM's Assistant
+// understands a sentence only when its lexicon knows the words.  With this
+// on and an engine configured (HostAssistConfig: NEWTON_ASSIST_ENGINE=http
+// and NEWTON_ASSIST_URL):
+//
+// 1. The ROM's parse runs first (assist/ParseUtter.cpp's parseUtter).  If
+//    it finds a task nothing else happens: no engine is asked.
+// 2. Otherwise, where the ROM would show "I don't understand", it asks
+//    Understand(sentence) here, and when that answers true leaves the slip
+//    thinking.  The sentence goes to the engine with instructions made
+//    from the live task list (GenFullCommands - the ROM's tasks and every
+//    one an application registered with RegTaskTemplate).
+// 3. The engine answers one command in the words the ROM's parse knows -
+//    "call Daniel", "schedule lunch with Anna friday" - or "none".
+// 4. A command whose first word is one of the tasks is handed to
+//    ParseUtter, which opens that task's own slip, filled in, to be
+//    confirmed or corrected exactly as for a sentence the ROM understood.
+//    The engine never acts by itself.
+// 5. An answer that names no task, or a command the ROM still cannot
+//    parse, is discarded and the ROM's "I don't understand" shown.
+//
+// The rewrite into the ROM's own words is how the model "chooses a task
+// and fills its slots" here: the ROM's parse does the filling, so a task's
+// slots get the kinds of value they always have.  Nothing but the sentence
+// and the list of tasks is sent: the read-only lookups assistant.md
+// proposes (Names, meetings, notes) are not built, as whether they may go
+// to a cloud engine is the owner's decision still.
+
+{
+	asking: nil,			// the sentence the engine is asked about
+	retrying: nil,			// the engine's command being parsed
+	lastSent: nil,			// what went to the engine: {url, instructions, sentence}
+	lastCommand: nil,		// what came back and was tried
+	asked: 0,				// how many sentences the engine has been asked about
+
+	// the instructions sent with a sentence, made from the live task list
+	Instructions: func(commands)
+	begin
+		local words := "";
+		foreach i, c in commands do
+			words := words & (if i > 0 then ", " else "") & c;
+		"You turn a request written on a Newton MessagePad into one short command that its Assistant understands. "
+		& "A command starts with one of these words: " & words & ". "
+		& "Then come the words it acts on, as the request has them: a person's name, a day, a time, a place, a subject. "
+		& "For example: call Daniel; schedule lunch with Anna friday 1pm; remember buy milk; find invoice; mail Anna; time in Paris. "
+		& "Answer with the command alone, on one line, with no other words. If no command fits the request, answer none.";
+	end,
+
+	// the sentence the ROM could not parse handed to the engine.  ==> true
+	// when it was (the slip is left thinking), nil for the ROM's answer
+	Understand: func(sentence)
+	begin
+		if retrying or asking or not HostFeatureOn('assistant) then return nil;
+		if not IsString(sentence) or StrLen(sentence) = 0 then return nil;
+		local config := HostAssistConfig();
+		if config.engine <> 'http then return nil;
+		local instructions := :Instructions(GenFullCommands());
+		if not HostAssistRequest(instructions, sentence) then return nil;
+		asking := Clone(sentence);
+		asked := asked + 1;
+		lastSent := {url: config.url, instructions: instructions, sentence: asking};
+		Print("assist: asking the engine about \"" & sentence & "\"");
+		:Poll();
+		true;
+	end,
+
+	// the answer looked for, again and again until it has come
+	Poll: func()
+	begin
+		local me := self;
+		AddDelayedCall(func() begin
+			local reply := HostAssistPoll();
+			if not reply then me:Poll()
+			else if IsFrame(reply) then begin
+				Print("assist: the engine failed: " & reply.error);
+				me:Answered(nil);
+			end else
+				me:Answered(reply);
+		end, nil, 200);
+	end,
+
+	// the engine's reply: its first line, without quotes or a full stop
+	CommandOf: func(reply)
+	begin
+		if not IsString(reply) then return nil;
+		local s := reply;
+		local cut := StrLen(s);
+		for i := 0 to StrLen(s) - 1 do
+			if cut = StrLen(s) and (s[i] = $\n or Ord(s[i]) = 10) then cut := i;
+		s := :Trim(SubStr(s, 0, cut));
+		while StrLen(s) > 0 and :Quote(s[0]) do s := SubStr(s, 1, StrLen(s) - 1);
+		while StrLen(s) > 0 and (:Quote(s[StrLen(s) - 1]) or s[StrLen(s) - 1] = $. or s[StrLen(s) - 1] = $!) do
+			s := SubStr(s, 0, StrLen(s) - 1);
+		s := :Trim(s);
+		if StrLen(s) = 0 or StrEqual(s, "none") then nil else s;
+	end,
+
+	// a quotation mark, straight or curly
+	Quote: func(c) begin local o := Ord(c); o = 34 or o = 39 or o = 96 or o = 0x201C or o = 0x201D or o = 0x2018 or o = 0x2019 end,
+
+	// a string without the spaces at its ends
+	Trim: func(s)
+	begin
+		local a := 0;
+		local b := StrLen(s);
+		while a < b and (s[a] = $  or Ord(s[a]) = 9) do a := a + 1;
+		while b > a and (s[b - 1] = $  or Ord(s[b - 1]) = 9 or Ord(s[b - 1]) = 13) do b := b - 1;
+		SubStr(s, a, b - a);
+	end,
+
+	// whether a command starts with one of the tasks' words
+	NamesTask: func(command, commands)
+	begin
+		local space := StrPos(command, " ", 0);
+		local first := if space then SubStr(command, 0, space) else command;
+		foreach c in commands do
+			if StrEqual(c, first) then return true;
+		nil;
+	end,
+
+	Answered: func(reply)
+	begin
+		local sentence := asking;
+		asking := nil;
+		local command := :CommandOf(reply);
+		lastCommand := command;
+		if command and :NamesTask(command, GenFullCommands()) then begin
+			Print("assist: the engine read \"" & sentence & "\" as \"" & command & "\"");
+			retrying := true;
+			local task := try ParseUtter(command) onexception |evt.ex| do nil;
+			retrying := nil;
+			if task then return task;
+			Print("assist: the engine's command could not be parsed");
+			return nil;					// (ParseUtter has said "I don't understand")
+		end;
+		Print("assist: the engine found no task for \"" & sentence & "\""
+			& (if command then " (it answered \"" & command & "\")" else ""));
+		:Duh();
+		nil;
+	end,
+
+	// the ROM's "I don't understand", as parseUtter shows it
+	Duh: func()
+	begin
+		local slip := GetRoot().assistant;
+		if slip then slip:duh([nil]);
+	end
+}

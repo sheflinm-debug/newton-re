@@ -1,0 +1,468 @@
+// Permissions: what each installed package says it needs, and what the
+// user has granted it, recorded and shown (docs/modern/permissions.md).
+// Compiled into newton (HostPermissionsSource.cpp, made by
+// src/cmake/EmbedText.cmake) and evaluated at boot beside the Marked
+// application by HostInstallMarks (host/HostMarks.cpp); the frame is kept
+// in the global HostPermissions:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeaturePermissions - the
+// Host panel's "Package permissions", NEWTON_PERMISSIONS): the ROM lets any
+// package read and change every soup and send anything anywhere, and asks
+// nothing at install.  With this on:
+//
+// - a package may declare what it needs, a slot `permissions` in one of
+//   its parts' frames (the form part's, beside app, text and theForm):
+//       permissions: {soups: {|Names|: 'read, |Notes|: 'readWrite},
+//                     ownSoups: ["MyApp:SIG"], network: ['inet], send: true,
+//                     camera: nil, location: nil, assistant: nil,
+//                     replaceFunctions: nil}
+// - every package on a store is recorded, once, in the soup
+//   "Permissions:host" of the internal store: when it is installed (a
+//   change to the "Packages" soup, RegSoupChange) and, for those installed
+//   while this was off, whenever the list is made.  What it declares is
+//   granted as it is installed; a package with no declaration - everything
+//   written before now - is recorded as one written for older Newtons,
+//   which can read and change everything but is to ask before it uses the
+//   network.  A package's record goes when the package does.
+// - the Permissions application in Extras lists the packages and their
+//   grants; a tap on a grant takes it away, or gives it back.
+// - Granted(packageName, id) answers what was granted, for the checks to
+//   come.
+//
+// Nothing is refused yet: this is the record and its display, the first
+// version the owner chose while the question permissions.md leaves open -
+// which package the running code belongs to, all NewtonScript sharing one
+// task and one heap - is studied.  The application says so at its top.
+// And the install-time question permissions.md proposes for undeclared
+// packages is not asked: with nothing enforced it would be a question
+// whose answer changed nothing.
+
+{
+	appSymbol: '|Permissions:host|,
+	soupName: "Permissions:host",
+	packagesSoup: "Packages",
+
+	app: {
+		viewClass: 74,							// clView
+		viewFlags: 5,							// vVisible, vApplication
+		viewFormat: 273,						// white, a one-pixel black frame
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		declareSelf: 'base,
+		viewFont: 10240,
+		appSymbol: '|Permissions:host|,
+		title: "Permissions",
+		ReOrientToScreen: func() :Relayout(),
+
+		kFont: 10240,							// the system font, 10 point
+		kBold: 1058816,							// bold
+		kSmall: 9216,							// 9 point
+
+		lines: nil,								// what the list shows, a line each (Lines)
+		scroll: 0,								// lines scrolled past
+		listView: nil,
+
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight);
+		end,
+
+		viewSetupDoneScript: func()
+		begin
+			foreach v in :ChildViewFrames() do
+				if v.role then
+					self.(v.role) := v;
+			:Reload();
+			:Layout();
+		end,
+
+		viewQuitScript: func()
+		begin
+			listView := nil;
+			lines := nil;
+		end,
+
+		Relayout: func()
+		begin
+			local p := GetAppParams();
+			SetValue(self, 'viewBounds, RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight));
+			:Layout();
+		end,
+
+		Layout: func()
+		begin
+			local box := :LocalBox();
+			SetValue(listView, 'viewBounds, RelBounds(0, 0, box.right, box.bottom));
+		end,
+
+		Reload: func()
+		begin
+			local perms := GetGlobalVar('|HostPermissions:host|);
+			perms:RecordAll();
+			lines := perms:Lines();
+			if scroll >= Length(lines) then scroll := 0;
+			if listView then listView:Dirty();
+		end,
+
+		LineHeight: func(line)
+			if line.kind = 'package then FontHeight(kBold) + 8 else FontHeight(kSmall) + 6,
+
+		viewChildren: [
+			// the list: a title, then a line a package and a line a grant
+			{
+				viewClass: 74, viewFlags: 513, viewFormat: 0, role: 'listView,
+				viewBounds: {left: 0, top: 0, right: 240, bottom: 300},
+				HeaderHeight: func() FontHeight(:Parent().kBold) + FontHeight(:Parent().kSmall) + 14,
+				viewDrawScript: func()
+				begin
+					local base := :Parent();
+					local b := :LocalBox();
+					local w := b.right;
+					local hh := :HeaderHeight();
+					local bh := FontHeight(base.kBold);
+					:DrawShape(MakeText("Permissions", 8, 4, w div 2 + 20, 4 + bh), {font: base.kBold});
+					local cw := StrFontWidth("Close", base.kBold);
+					:DrawShape(MakeRoundRect(w - cw - 12, 2, w - 3, 4 + bh + 2, 4), {penSize: 1});
+					:DrawShape(MakeText("Close", w - cw - 7, 4, w - 4, 4 + bh), {font: base.kBold});
+					:DrawShape(MakeText("Recorded only: nothing is refused yet.", 8, bh + 8, w - 4, hh - 2), {font: base.kSmall});
+					:DrawShape(MakeLine(0, hh - 1, w, hh - 1), {penSize: 1});
+					local count := if base.lines then Length(base.lines) else 0;
+					if count = 0 then begin
+						:DrawShape(MakeText("No packages are installed.", 12, hh + 12, w - 12, hh + 30), {font: base.kFont});
+						return;
+					end;
+					local y := hh;
+					local i := base.scroll;
+					while i < count and y < b.bottom do begin
+						local line := base.lines[i];
+						local lh := base:LineHeight(line);
+						if line.kind = 'package then begin
+							if i > base.scroll then
+								:DrawShape(MakeLine(4, y, w - 4, y), {penSize: 1, penPattern: 3});
+							:DrawShape(MakeText(StyledStrTruncate(line.text, w - 12, base.kBold), 6, y + 4, w - 6, y + 4 + FontHeight(base.kBold)),
+								{font: base.kBold});
+						end else begin
+							local x := 22;
+							if line.item and not line.item.fixed then begin
+								// a box, ticked when granted
+								local top := y + (lh - 9) div 2;
+								:DrawShape(MakeRect(10, top, 19, top + 9), {penSize: 1});
+								if line.item.on then begin
+									:DrawShape(MakeLine(11, top + 4, 13, top + 7), {penSize: 2});
+									:DrawShape(MakeLine(13, top + 7, 18, top + 1), {penSize: 2});
+								end;
+							end;
+							:DrawShape(MakeText(StyledStrTruncate(line.text, w - x - 6, base.kSmall), x, y + 3, w - 6, y + lh - 1),
+								{font: base.kSmall});
+						end;
+						y := y + lh;
+						i := i + 1;
+					end;
+				end,
+				viewClickScript: func(unit)
+				begin
+					local base := :Parent();
+					local box := :GlobalBox();
+					local y := GetPoint(5, unit) - box.top - :HeaderHeight();
+					local x := GetPoint(4, unit) - box.left;
+					if y < 0 then begin
+						// the header: Close at its right; elsewhere, a page back
+						if x > box.right - box.left - StrFontWidth("Close", base.kBold) - 14 then base:Close()
+						else base:ScrollBy(-1);
+						return true;
+					end;
+					if not base.lines then return true;
+					local i := base.scroll;
+					local top := 0;
+					while i < Length(base.lines) and top + base:LineHeight(base.lines[i]) <= y do begin
+						top := top + base:LineHeight(base.lines[i]);
+						i := i + 1;
+					end;
+					// below the last line: a page on
+					if i >= Length(base.lines) then begin
+						base:ScrollBy(1);
+						return true;
+					end;
+					local line := base.lines[i];
+					if line.item and not line.item.fixed then begin
+						GetGlobalVar('|HostPermissions:host|):Toggle(line.package, line.item.id);
+						base:Reload();
+					end;
+					true;
+				end
+			}
+		],
+
+		ScrollBy: func(pages)
+		begin
+			if not lines then return;
+			local rows := Max(1, ((listView:LocalBox()).bottom - listView:HeaderHeight()) div (FontHeight(kSmall) + 6));
+			local was := scroll;
+			scroll := Max(0, Min(scroll + pages * rows, Length(lines) - 1));
+			if scroll = was and pages > 0 then scroll := 0;		// (past the end: back to the top)
+			listView:Dirty();
+		end
+	},
+
+	// the soup of records, made on the internal store when there is none
+	Soup: func()
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(soupName) then
+			store:CreateSoupXmit(soupName, [], nil);
+		store:GetSoup(soupName);
+	end,
+
+	// a package's record (nil: none)
+	RecordOf: func(packageName)
+	begin
+		local cursor := :Soup():Query({});
+		local e := cursor:Entry();
+		while e do begin
+			if IsString(e.package) and StrEqual(e.package, packageName) then return e;
+			e := cursor:Next();
+		end;
+		nil;
+	end,
+
+	// A package's declaration: the `permissions` slot of the first of its
+	// parts' frames that has one.  ==> the frame, or nil for none.
+	DeclarationOf: func(pkgRef)
+	begin
+		local info := try GetPkgRefInfo(pkgRef) onexception |evt.ex| do nil;
+		if not info or not IsArray(info.parts) then return nil;
+		foreach part in info.parts do
+			if IsFrame(part) and IsFrame(part.permissions) then
+				return part.permissions;
+		nil;
+	end,
+
+	// What a declaration asks for, a grant each: {id, label, on, fixed}.
+	ItemsOf: func(d)
+	begin
+		local items := [];
+		if IsFrame(d.soups) then
+			foreach name, level in d.soups do
+				if level then
+					AddArraySlot(items, {id: "soup:" & name,
+						label: (if level = 'readWrite then "Read and change " else "Read ") & :SoupLabel(name), on: true});
+		if IsArray(d.ownSoups) and Length(d.ownSoups) > 0 then begin
+			local names := "";
+			foreach i, s in d.ownSoups do
+				names := names & (if i > 0 then ", " else "") & s;
+			AddArraySlot(items, {id: "ownSoups", label: "Its own soups: " & names, on: true, fixed: true});
+		end;
+		if d.network then begin
+			local how := "";
+			if IsArray(d.network) then
+				foreach i, s in d.network do
+					how := how & (if i > 0 then ", " else " (") & s & (if i = Length(d.network) - 1 then ")" else "");
+			AddArraySlot(items, {id: "network", label: "Use the network" & how, on: true});
+		end;
+		if d.send then AddArraySlot(items, {id: "send", label: "Send through Mail, Beam and the like", on: true});
+		if d.camera then AddArraySlot(items, {id: "camera", label: "Use the camera", on: true});
+		if d.location then AddArraySlot(items, {id: "location", label: "Know where you are", on: true});
+		if d.assistant then AddArraySlot(items, {id: "assistant", label: "Take requests from the Assistant", on: true});
+		if d.replaceFunctions then AddArraySlot(items, {id: "replaceFunctions", label: "Replace system functions", on: true});
+		items;
+	end,
+
+	// A soup's name as the soup has it: a symbol's name keeps the case of
+	// whoever interned it first ('names, the ROM's), but soup names are
+	// matched without case, so the soup itself says how it is written.
+	SoupLabel: func(name)
+	begin
+		local text := "" & name;
+		local soup := try GetUnionSoup(text) onexception |evt.ex| do nil;
+		if soup then soup:GetName() else text;
+	end,
+
+	// what a package with no declaration is recorded as having
+	LegacyItems: func()
+		[{id: "all", label: "Read and change all your information", on: true},
+		 {id: "network", label: "Use the network (to be asked on first use)", on: nil}],
+
+	// A package of the "Packages" soup recorded, when it has no record yet.
+	// ==> its record.
+	RecordEntry: func(entry)
+	begin
+		if not IsFrame(entry) or not IsString(entry.packageName) then return nil;
+		local had := :RecordOf(entry.packageName);
+		if had then return had;
+		local d := :DeclarationOf(entry.pkgRef);
+		local record := {package: Clone(entry.packageName), declared: if d then true else nil,
+			items: if d then :ItemsOf(d) else :LegacyItems(), recorded: Time()};
+		:Soup():AddXmit(record, nil);
+		Print("permissions: recorded " & entry.packageName
+			& (if d then ": " & NumberStr(Length(record.items)) & " declared" else ": no declaration, written for older Newtons"));
+		record;
+	end,
+
+	// a package's record taken away with it
+	Forget: func(packageName)
+	begin
+		local e := :RecordOf(packageName);
+		if e then begin
+			EntryRemoveFromSoupXmit(e, nil);
+			Print("permissions: forgot " & packageName);
+		end;
+	end,
+
+	// every package on a store recorded, and the records of packages gone
+	// taken away
+	RecordAll: func()
+	begin
+		local names := [];
+		local packages := GetUnionSoup(packagesSoup);
+		if packages then begin
+			local cursor := packages:Query({});
+			local e := cursor:Entry();
+			while e do begin
+				// (the soup is the Extras drawer's: its packages are the entries with a pkgRef)
+				if e.pkgRef and IsString(e.packageName) then begin
+					AddArraySlot(names, e.packageName);
+					:RecordEntry(e);
+				end;
+				e := cursor:Next();
+			end;
+		end;
+		local gone := [];
+		local cursor := :Soup():Query({});
+		local r := cursor:Entry();
+		while r do begin
+			local found := nil;
+			foreach n in names do
+				if StrEqual(n, r.package) then found := true;
+			if not found then AddArraySlot(gone, r.package);
+			r := cursor:Next();
+		end;
+		foreach n in gone do :Forget(n);
+	end,
+
+	// The list's lines: a package, then its grants.
+	Lines: func()
+	begin
+		local records := [];
+		local cursor := :Soup():Query({});
+		local r := cursor:Entry();
+		while r do begin
+			AddArraySlot(records, r);
+			r := cursor:Next();
+		end;
+		Sort(records, '|str<|, 'package);
+		local out := [];
+		foreach r in records do begin
+			AddArraySlot(out, {kind: 'package, package: r.package, text: r.package});
+			if not r.declared then
+				AddArraySlot(out, {kind: 'note, package: r.package, text: "Written for older Newtons: it declares nothing."});
+			if IsArray(r.items) and Length(r.items) > 0 then
+				foreach item in r.items do
+					AddArraySlot(out, {kind: 'grant, package: r.package, item: item, text: item.label})
+			else
+				AddArraySlot(out, {kind: 'note, package: r.package, text: "Asks for nothing."});
+		end;
+		out;
+	end,
+
+	// a grant taken away, or given back.  ==> whether it is granted now
+	Toggle: func(packageName, id)
+	begin
+		local r := :RecordOf(packageName);
+		if not r or not IsArray(r.items) then return nil;
+		foreach item in r.items do
+			if StrEqual(item.id, id) and not item.fixed then begin
+				item.on := not item.on;
+				EntryChangeXmit(r, nil);
+				Print("permissions: " & packageName & " " & id & (if item.on then " granted" else " taken away"));
+				return item.on;
+			end;
+		nil;
+	end,
+
+	// Whether a package was granted something: an id of ItemsOf's ("soup:"
+	// and a soup's name, "network", "send", ...).  A package written for
+	// older Newtons has every soup ("all").  Nothing asks yet (see above).
+	Granted: func(packageName, id)
+	begin
+		local r := :RecordOf(packageName);
+		if not r or not IsArray(r.items) then return nil;
+		foreach item in r.items do
+			if StrEqual(item.id, id) or (StrEqual(item.id, "all") and BeginsWith(id, "soup:")) then
+				return item.on;
+		nil;
+	end,
+
+	// a padlock for the Extras drawer
+	MakeIcon: func()
+	begin
+		local bitmap := MakeBitmap(28, 26, nil);
+		DrawIntoBitmap(MakeRoundRect(8, 2, 20, 16, 6), {penSize: 2}, bitmap);
+		DrawIntoBitmap(MakeRect(5, 11, 23, 25), {penSize: 1, fillPattern: 5}, bitmap);
+		bitmap;
+	end,
+
+	// the Extras entry, found (nil: none)
+	IconEntry: func()
+	begin
+		local extras := GetUnionSoup(@307.name);
+		if not extras then return nil;
+		local cursor := Query(extras, {type: 'index});
+		local e;
+		while (e := cursor:Entry()) do begin
+			if e.app = appSymbol then return e;
+			cursor:Next();
+		end;
+		nil;
+	end,
+
+	// a package installed or removed: its record made or taken away (an
+	// entryRemoved's data is the entry as it was)
+	PackagesChanged: func(soupName, appSym, changeType, changeData)
+	begin
+		if changeType = 'entryAdded then begin
+			if IsFrame(changeData) and changeData.pkgRef then :RecordEntry(changeData);
+		end
+		else if changeType = 'entryRemoved and IsFrame(changeData) and IsString(changeData.packageName) then
+			:Forget(changeData.packageName);
+	end,
+
+	watching: nil,
+
+	// on: the application, its icon, the packages recorded and watched;
+	// off: the icon taken away and the watch stopped (the records kept)
+	Start: func()
+	begin
+		if not HostFeatureOn('permissions) then
+			return :Stop();
+		if not GetRoot().(appSymbol) then
+			GetRoot().(appSymbol) := BuildContext(app);
+		if not :IconEntry() then begin
+			local extras := GetUnionSoup(@307.name);
+			if extras then
+				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Permissions", app: appSymbol,
+					icon: :MakeIcon(), labels: nil, sequence: 32, _tagList: ['_icon, '_noBackup]}, nil);
+		end;
+		// (the packages already installed recorded a little later: at boot the
+		//  internal store is not ready for a new soup yet)
+		local me := self;
+		AddDelayedCall(func() try me:RecordAll() onexception |evt.ex| do
+			Print("permissions: not recorded: " & CurrentException().name), nil, 2000);
+		if not watching then begin
+			RegSoupChange(packagesSoup, appSymbol, func(soupName, appSym, changeType, changeData)
+				me:PackagesChanged(soupName, appSym, changeType, changeData));
+			watching := true;
+		end;
+	end,
+
+	Stop: func()
+	begin
+		if watching then begin
+			UnRegSoupChange(packagesSoup, appSymbol);
+			watching := nil;
+		end;
+		local e := :IconEntry();
+		if e then EntryRemoveFromSoupXmit(e, nil);
+		local base := GetRoot().(appSymbol);
+		if base and base.viewCObject then base:Close();
+	end
+}

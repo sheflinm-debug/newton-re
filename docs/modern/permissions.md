@@ -1,7 +1,8 @@
 # Permissions: what a package may read and send
 
-**Status: a proposal. The enforcement question below is open and decides
-how much of this is possible.**
+**Status: a first version built (2026-11-12) that records and shows
+grants without enforcing them; the enforcement question below is open and
+decides how much more is possible.**
 
 ## The problem
 
@@ -68,9 +69,52 @@ A fixture package for each rule: one that reads Names without the grant
 soup (allowed), an undeclared one (the question shown), one that replaces
 a global function (refused without the grant).
 
+## State (2026-11-12, branch `modern`)
+
+Built: the record and its display, the first version the owner chose
+(decision 2 below), behind the Host panel's "Package permissions"
+(`host/Features.h`'s `kFeaturePermissions`, `NEWTON_PERMISSIONS`).
+`src/host/HostPermissions.ns` (the global `HostPermissions:host`, loaded
+by `host/HostMarks.cpp` beside Marked):
+- a package's declaration is the `permissions` slot of the first of its
+  parts' frames that has one (`GetPkgRefInfo(pkgRef).parts`), as above;
+- every package on a store gets one record in the soup
+  `"Permissions:host"` of the internal store - `{package, declared,
+  items: [{id, label, on, fixed}], recorded}` - made when it is installed
+  (`RegSoupChange` on the Extras drawer's soup, @307's "Packages", whose
+  package entries are those with a `pkgRef`) and, for packages installed
+  while this was off, two seconds after boot and whenever the list opens;
+  the record goes when the package does;
+- what is declared is granted as installed; a package without a
+  declaration is recorded as "written for older Newtons": every soup
+  (`"all"`) granted, the network not (to be asked on first use);
+- the Permissions application in Extras lists the packages and their
+  grants, says at its top that nothing is refused yet, and a tap on a
+  grant's box takes it away or gives it back;
+- `Granted(packageName, id)` answers for the checks to come (ids:
+  `"soup:"` and a soup name, `"ownSoups"`, `"network"`, `"send"`,
+  `"camera"`, `"location"`, `"assistant"`, `"replaceFunctions"`).
+
+Demo `src/host/demo/permissions.ns`, ctests `host.NewtonPermissions` and
+`.off` (with the Monaco font package, which declares nothing).
+
+Not built: any enforcement (the caller question above); the install-time
+question for undeclared packages (decision 1 - with nothing enforced its
+answer would change nothing, so it waits for enforcement); a fixture
+package that declares permissions (the tests turn a declaration into
+grants with `ItemsOf` directly: the repository has no tool that writes a
+form package yet); the four fixture packages of Tests above.
+
+Found on the way: the soup @307 names, "Packages", is the Extras drawer's,
+not a list of packages - its package entries are the ones with a `pkgRef`
+and a `packageName`; a symbol keeps the case of whoever interned it first
+(`'|Names|` prints as "names", the ROM having `'names`), so a label asks
+the soup for its own name.
+
 ## Owner decisions
 
 1. Undeclared packages: the single question above, or silent full access
-   as today.
+   as today.  (Open; nothing asks yet.)
 2. Whether a first version that only records and displays grants, without
    enforcing, is worth shipping while the caller question is studied.
+   (Decided 2026-11-12: yes - built, see State.)

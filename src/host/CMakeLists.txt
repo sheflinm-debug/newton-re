@@ -175,6 +175,22 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostMarks.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostAssist.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp -DNAME=gHostAssistSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostAssist.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
+# host/HostPermissions.ns, the Permissions application (docs/modern/permissions.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostPermissionsSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostPermissions.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostPermissionsSource.cpp -DNAME=gHostPermissionsSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostPermissions.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostWordEngines.ns, the host's engines in the Handwriting Recognition
 # slip (recognition/WordEngines.h), compiled in the same way
 add_custom_command(
@@ -187,6 +203,8 @@ add_custom_command(
 add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.cpp HostOrientation.cpp HostSettings.cpp HostFontProvider.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostSettingsSource.cpp HostWordEngines.cpp
                HostMarks.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMarksSource.cpp HostOpenURL.cpp
+               ${CMAKE_CURRENT_BINARY_DIR}/HostPermissionsSource.cpp
+               HostAssist.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial)
 target_compile_definitions(newton PRIVATE "NEWTON_DEFAULT_OBJECTS=\"${NEWTON_OBJECTS_FILE}\"")
@@ -1443,6 +1461,58 @@ set_tests_properties(host.NewtonMarking.off PROPERTIES TIMEOUT 180
                      ENVIRONMENT "NEWTON_MARKING=0"
                      PASS_REGULAR_EXPRESSION "HostFeatureOn nil, the pop-up has 2 items.*marking: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+
+# package permissions recorded (docs/modern/permissions.md;
+# host/HostPermissions.ns): a package with no declaration recorded as
+# written for older Newtons, a declaration's grants, the Permissions
+# application's list and a grant tapped on and off; .off, no application
+if(EXISTS ${CMAKE_SOURCE_DIR}/../fixtures/packages/fonts/monaco.pkg)
+  foreach(state 1 0)
+    if(state)
+      set(name host.NewtonPermissions)
+      set(pass "HostFeatureOn true, the application true.*recorded Monaco, declared nil, 2 items: Read and change all your information.*Names granted true, network granted nil.*a declaration's grants: Read Names. Read and change Notes. Its own soups: Demo:SIG. Use the network .inet.. Send through Mail.*the network grant at 3.*tapped, network granted true.*tapped again, network granted nil.*permissions: done")
+    else()
+      set(name host.NewtonPermissions.off)
+      set(pass "HostFeatureOn nil, the application nil.*permissions: done")
+    endif()
+    add_test(NAME ${name} COMMAND newton --display 320x480 --headless 120
+             --store ${CMAKE_BINARY_DIR}/permissions-${state}.store --erase
+             --package ${CMAKE_SOURCE_DIR}/../fixtures/packages/fonts/monaco.pkg
+             --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/permissions.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(${name} PROPERTIES TIMEOUT 180
+                         ENVIRONMENT "NEWTON_PERMISSIONS=${state}"
+                         PASS_REGULAR_EXPRESSION "${pass}"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+  endforeach()
+endif()
+
+# the Assistant with a model behind it (docs/modern/assistant.md;
+# host/HostAssist.ns): tools/host/fakemodel.py answers as a model from a
+# table - a command naming no task discarded, "none", a sentence the ROM
+# parses itself (no engine asked), and one the engine rewrites into "call
+# Daniel", the Call slip opened from it; .off, no engine asked
+if(Python3_EXECUTABLE)
+  foreach(state 1 0)
+    if(state)
+      set(name host.NewtonAssistModel)
+      set(pass "HostFeatureOn true, engine http.*\"launch the rockets\": the ROM's parse found none, the engine asked yes.*the engine found no task for \"launch the rockets\" .it answered \"launch rockets\".*\"xyzzy plugh\": the ROM's parse found none, the engine asked yes.*\"call Daniel\": the ROM's parse found a task, the engine asked no.*\"give my brother a buzz\": the ROM's parse found none, the engine asked yes.*the engine read \"give my brother a buzz\" as \"call Daniel\".*the Call slip open, addressed to Daniel.*assist-model: done")
+    else()
+      set(name host.NewtonAssistModel.off)
+      set(pass "HostFeatureOn nil, engine http.*\"launch the rockets\": the ROM's parse found none, the engine asked no.*\"call Daniel\": the ROM's parse found a task, the engine asked no.*\"give my brother a buzz\": the ROM's parse found none, the engine asked no.*assist-model: done")
+    endif()
+    add_test(NAME ${name}
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/host/fakemodel.py
+                     --answer "launch the rockets=launch rockets" --answer "give my brother a buzz=call Daniel"
+                     --spawn $<TARGET_FILE:newton> --display 320x480 --headless 120
+                     --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/assist-model.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(${name} PROPERTIES TIMEOUT 200
+                         ENVIRONMENT "NEWTON_ASSISTANT=${state}"
+                         PASS_REGULAR_EXPRESSION "${pass}"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
+  endforeach()
+endif()
 
 # checkboxes in a note (docs/modern/structure.md; views/MarginMarks.h): the
 # caret's pop-up makes a paragraph a to-do item, its box ticked and

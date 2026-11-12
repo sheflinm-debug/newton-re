@@ -588,3 +588,17 @@ on its undefined-behaviour checks in a build without a type, so a
 `memcpy` from nil and the like stop the program with the C stack - which
 found two of the bugs below.  What it found is in `docs/host-lp64.md`,
 "The 32-bit build under WSL".
+
+## fakemodel.py - a pretend model for the Assistant's engine
+
+    python tools/host/fakemodel.py [--answer "SENTENCE=COMMAND"]... [--status N] --spawn <newton> [arguments...]
+
+- **Purpose:** the Assistant with a model behind it (`docs/modern/assistant.md`, `src/host/HostAssist.ns`) sends a
+  sentence its own parse cannot read to an OpenAI-style chat completions service. This is one that answers from a table
+  instead of a model, so the ctests need neither a model nor a network.
+- **How:** listens on 127.0.0.1 (a free port), runs newton with `NEWTON_ASSIST_ENGINE=http` and `NEWTON_ASSIST_URL`
+  pointing at itself, and answers each request's user message with the `--answer` command for it (matched without case),
+  `"none"` for any other; `--status N` answers every request with that HTTP status instead.
+- **Output:** newton's output passed through, and `fakemodel: offered the tasks: ...` (the task words the request's
+  instructions list), `fakemodel: asked "SENTENCE" -> "COMMAND"`; exits with newton's status.
+- **Used by:** ctests `host.NewtonAssistModel` and `.off` (`src/host/demo/assist-model.ns`).

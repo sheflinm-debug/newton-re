@@ -59,9 +59,11 @@ on-device inspection.  Its README orders them.  Built on branch `modern`
 as ink or text from the caret's pop-up, read in the background and found
 by Find (`ink-and-text.md`); marks and the Marked application
 (`marking.md`); checkboxes, lists and live details in a note
-(`structure.md`).  Each page's State says what is left.  Next in the
-README's order: permissions, then the Assistant; files, Camera and
-Gallery.  The owner's open question: Newton as an OS over a Linux kernel
+(`structure.md`); package permissions recorded and shown, not yet
+enforced (`permissions.md`); the Assistant handing a sentence its parse
+cannot read to a model, which rewrites it in the ROM's own words
+(`assistant.md`).  Each page's State says what is left.  Next in the
+README's order: files, then Camera and Gallery.  The owner's open question: Newton as an OS over a Linux kernel
 or on bare metal, and the first device - `modernization-plan.md` is to be
 reworked around the answer.
 

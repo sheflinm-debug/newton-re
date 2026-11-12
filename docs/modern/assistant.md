@@ -1,6 +1,7 @@
 # The Assistant with a language model behind it
 
-**Status: a proposal.**
+**Status: a first version built (2026-11-12): the engine seam, an engine
+for any OpenAI-style chat service, and a fake for the tests; no lookups.**
 
 ## What Newton has
 
@@ -71,6 +72,54 @@ entries (only those are in the request).
 Offers inside an ordinary note ("call Bob Friday" underlined, tap to make
 the to-do) belong to `structure.md`, "Live details", and use the ROM's
 matcher only, so nothing leaves the device for them.
+
+## State (2026-11-12, branch `modern`)
+
+Built, behind the Host panel's "Assistant model" (`host/Features.h`'s
+`kFeatureAssistant`, `NEWTON_ASSISTANT`):
+- **The seam.** `assist/ParseUtter.cpp`'s `parseUtter` asks
+  `AskAssistEngine(sentence)` where the ROM would say "I don't understand"
+  (`duh`) - so a sentence the ROM's parse understands never reaches an
+  engine. The engines are NewtonScript, `src/host/HostAssist.ns` (the
+  global `HostAssist:host`, `Understand(sentence)`), rather than a C++
+  `TAssistEngine` registry: an engine's work is building a request and
+  reading an answer, and the natives it needs are few.
+- **How the model fills the slots.** The engine is asked for one command
+  in the words the ROM's parse knows ("call Daniel", "schedule lunch with
+  Anna friday 1pm"), and that command is handed to `ParseUtter`, which
+  opens the task's own slip filled in by the ROM's own parse. A command
+  whose first word is not one of the live tasks (`GenFullCommands()`: the
+  ROM's and every `RegTaskTemplate` one), or that the ROM still cannot
+  parse, is discarded and "I don't understand" shown. The instructions sent
+  are made from the same live list, so an application's task is offered
+  without further work.
+- **The engines.** `NEWTON_ASSIST_ENGINE`: `none` (the default - nothing is
+  ever sent) or `http`, an OpenAI-style chat completions service at
+  `NEWTON_ASSIST_URL` (by default `http://localhost:11434/v1/chat/completions`,
+  a model server on the same machine as Ollama and llama.cpp's server
+  answer), model `NEWTON_ASSIST_MODEL` (`llama3.2`), with
+  `NEWTON_ASSIST_KEY` as a bearer token when set - which makes a cloud
+  provider possible too, by the user's own configuration. The request goes
+  over the host's sockets (TLS for https, the IPP printers' connection,
+  `print/host/HostIPPSocket.h`) from `host/HostAssist.cpp`, polled, never
+  waited on; the slip shows it is thinking meanwhile; 90 seconds without an
+  answer is a failure.
+- **What is sent:** the sentence and the instructions with the task list,
+  nothing else; `HostAssist:host.lastSent` keeps it and newton's log says
+  where it went.
+- Tests: `tools/host/fakemodel.py` answers from a table; demo
+  `src/host/demo/assist-model.ns`, ctests `host.NewtonAssistModel` and
+  `.off`.
+
+Not built:
+- the read-only lookups (Names, meetings, notes): decision 2 below is
+  open, and without them nothing personal leaves the device;
+- the slip's "What was sent" line (the record is kept, not yet shown);
+- the Host panel's naming of the engine and where it sends (the panel has
+  the switch only; the engine is chosen by environment variables);
+- the engine as a permission for packages (`permissions.md` records
+  grants, enforces none);
+- a native engine for Ollama's own API or another provider's format.
 
 ## Owner decisions
 

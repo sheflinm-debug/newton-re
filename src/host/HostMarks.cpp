@@ -7,7 +7,10 @@
 				started - which installs it only when marking is on
 				(host/Features.h).  And the native the modern additions'
 				NewtonScript asks whether it is on:
-				  HostFeatureOn(name) - 'marking, 'structure.
+				  HostFeatureOn(name) - 'marking, 'structure, 'permissions.
+				And the Permissions application (HostPermissions.ns,
+				docs/modern/permissions.md), likewise kept in the global
+				HostPermissions:host and started.
 				And HostOpenURL(url): a web, mail or telephone address handed
 				to the device - its browser, mail program or telephone (live
 				details, views/LiveDetails.h).  Only http:, https:, mailto:
@@ -27,6 +30,14 @@
 #include "HostOpenURL.h"
 
 extern const char gHostMarksSource[];		// HostMarks.ns (HostMarksSource.cpp, generated)
+extern const char gHostPermissionsSource[];	// HostPermissions.ns (HostPermissionsSource.cpp, generated)
+
+// the applications started here: their source, and the global each is kept in
+static const struct { const char* source; const char* global; const char* title; } kApps[] =
+{
+	{ gHostMarksSource, "HostMarks:host", "Marked" },
+	{ gHostPermissionsSource, "HostPermissions:host", "Permissions" }
+};
 
 
 // HostFeatureOn(name): whether that modern addition is on
@@ -84,34 +95,42 @@ HostInstallMarks(void)
 {
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostFeatureOn")), RefVar(MakeCFunction((void*) FHostFeatureOn, 1, nil)));
 	SetFrameSlot(RefVar(gFunctionFrame), RefVar(Intern((char*) "HostOpenURL")), RefVar(MakeCFunction((void*) FHostOpenURL, 1, nil)));
-	newton_try
+	for (size_t i = 0; i < sizeof(kApps) / sizeof(kApps[0]); i++)
 	{
-		RefVar fn(ParseString(RefVar(MakeString(gHostMarksSource))));
-		RefVar marks(InterpretBlock(fn, RefVar()));
-		SetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) "HostMarks:host")), marks);
-		NSSend(marks, RefVar(Intern((char*) "Start")));
+		newton_try
+		{
+			RefVar fn(ParseString(RefVar(MakeString(kApps[i].source))));
+			RefVar app(InterpretBlock(fn, RefVar()));
+			SetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) kApps[i].global)), app);
+			NSSend(app, RefVar(Intern((char*) "Start")));
+		}
+		newton_catch_all
+		{
+			fprintf(stderr, "[host] the %s application did not start: %s\n", kApps[i].title, CurrentException()->name);
+		}
+		end_try;
 	}
-	newton_catch_all
-	{
-		fprintf(stderr, "[host] the Marked application did not start: %s\n", CurrentException()->name);
-	}
-	end_try;
 }
 
 
+// a modern addition turned on or off: each application started again
+// (Start stops it when its addition is off)
 void
 HostMarksFeatureChanged(void)
 {
-	RefVar marks(GetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) "HostMarks:host"))));
-	if (!IsFrame(marks))
-		return;
-	newton_try
+	for (size_t i = 0; i < sizeof(kApps) / sizeof(kApps[0]); i++)
 	{
-		NSSend(marks, RefVar(Intern((char*) "Start")));		// (Start stops it when it is off)
+		RefVar app(GetFrameSlot(RefVar(gVarFrame), RefVar(Intern((char*) kApps[i].global))));
+		if (!IsFrame(app))
+			continue;
+		newton_try
+		{
+			NSSend(app, RefVar(Intern((char*) "Start")));
+		}
+		newton_catch_all
+		{
+			fprintf(stderr, "[host] the %s application: %s\n", kApps[i].title, CurrentException()->name);
+		}
+		end_try;
 	}
-	newton_catch_all
-	{
-		fprintf(stderr, "[host] the Marked application: %s\n", CurrentException()->name);
-	}
-	end_try;
 }

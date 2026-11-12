@@ -1,0 +1,97 @@
+// The Assistant with a model behind it (docs/modern/assistant.md;
+// host/HostAssist.ns, assist/ParseUtter.cpp's AskAssistEngine).  Run by
+// tools/host/fakemodel.py, which answers as a model would from a table:
+//
+// 1. "launch the rockets": the ROM's parse finds no task, the engine is
+//    asked and answers "launch rockets" - no task starts with "launch", so
+//    the answer is discarded and the slip says it does not understand;
+// 2. "xyzzy plugh": the engine answers "none" - the same;
+// 3. "call Daniel": the ROM's parse finds the call task; the engine is not
+//    asked;
+// 4. "give my brother a buzz": the engine answers "call Daniel", which the ROM's
+//    parse turns into the Call slip, addressed to Daniel, for the user to
+//    confirm.
+//
+// With NEWTON_ASSISTANT=0 nothing is asked and every sentence the ROM
+// cannot parse is not understood (ctests host.NewtonAssistModel and ...off).
+//
+//   python tools/host/fakemodel.py --answer "launch the rockets=launch rockets" //       --answer "give my brother a buzz=call Daniel" --spawn build/host/host/newton //       --display 320x480 --headless 120 --script src/host/demo/assist-model.ns
+//
+// Leaves build/assist-model.pgm (the Call slip made from the engine's
+// answer).
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+amName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+// a view under v whose text has the words in it
+amFind := func(v, words)
+  begin
+    local found := nil;
+    if IsString(v.text) and StrPos(v.text, words, 0) then
+      found := v
+    else
+      foreach child in v:ChildViewFrames() do
+        if not found then
+          found := call amFind with (child, words);
+    found;
+  end;
+
+// the Call slip: the frontmost view, with a Call button and Daniel in it
+amCallSlip := func()
+  begin
+    local kids := GetRoot():ChildViewFrames();
+    local front := kids[Length(kids) - 1];
+    call amFind with (front, "Call") and call amFind with (front, "daniel");
+  end;
+
+amEngine := func() GetGlobalVar('|HostAssist:host|);
+
+amNotAsking := func() not (call amEngine with ()).asking;
+
+// a sentence handed to the Assistant; `andThen` once the engine, if it was
+// asked, has answered
+amAsk := func(sentence, andThen)
+  begin
+    local before := (call amEngine with ()).asked;
+    local task := ParseUtter(sentence);
+    Print("assist-model: \"" & sentence & "\": the ROM's parse " & (if task then "found a task" else "found none")
+      & ", the engine asked " & (if (call amEngine with ()).asked > before then "yes" else "no"));
+    call waitFor with ("assist-model: " & sentence, amNotAsking, andThen, 30);
+  end;
+
+amCloseFront := func()
+  begin
+    local kids := GetRoot():ChildViewFrames();
+    kids[Length(kids) - 1]:Close();
+  end;
+
+call walkSetup with (amName, func() begin
+    Print("assist-model: HostFeatureOn " & (if HostFeatureOn('assistant) then "true" else "nil")
+      & ", engine " & HostAssistConfig().engine);
+    call amAsk with ("launch the rockets", func() begin
+        Print("assist-model: the engine's command was " & (call amEngine with ()).lastCommand);
+        call amAsk with ("xyzzy plugh", func() begin
+            Print("assist-model: the engine's command was " & (call amEngine with ()).lastCommand);
+            call amAsk with ("call Daniel", func() begin
+                call waitFor with ("assist-model: the ROM's Call slip", amCallSlip, func() begin
+                    call amCloseFront with ();
+                    AddDelayedCall(func()
+                      call amAsk with ("give my brother a buzz", func() begin
+                          if not HostFeatureOn('assistant) then
+                            begin
+                              Print("assist-model: done");
+                              return HostQuit();
+                            end;
+                          call waitFor with ("assist-model: the engine's Call slip", amCallSlip, func() begin
+                              Print("assist-model: the Call slip open, addressed to Daniel");
+                              ScreenSnapshot("build/assist-model.pgm");
+                              Print("assist-model: done");
+                              HostQuit();
+                            end, 20);
+                        end), nil, 500);
+                  end, 20);
+              end);
+          end);
+      end);
+  end);

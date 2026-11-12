@@ -9,6 +9,35 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - the Assistant with a model behind it
+
+On branch `modern`, behind the Host panel's "Assistant model"
+(`NEWTON_ASSISTANT`) and an engine (`NEWTON_ASSIST_ENGINE=http`): a
+sentence the ROM's parse finds no task for goes, where the ROM would say
+"I don't understand", to an OpenAI-style chat service (a model server on
+the machine by default), which is asked for one command in the words the
+ROM's parse knows; the command is parsed by the ROM, which opens the
+task's own slip to be confirmed. A command naming no live task is
+discarded. Only the sentence and the task list are sent; the lookups wait
+on the owner's decision. `src/host/HostAssist.ns`, `host/HostAssist.cpp`
+(a polled HTTP client over the IPP printers' socket), the hook in
+`assist/ParseUtter.cpp`; `tools/host/fakemodel.py` answers in the tests.
+
+## 2026-11-12: Modern additions - package permissions recorded
+
+On branch `modern`, behind the Host panel's "Package permissions"
+(`NEWTON_PERMISSIONS`): the first version of `docs/modern/permissions.md`
+that the owner chose - every package on a store recorded once in the soup
+`"Permissions:host"` with what its part frame's `permissions` slot
+declares (granted as installed) or, with no declaration, as written for
+older Newtons (every soup, the network to be asked for); the Permissions
+application in Extras lists them and a tap takes a grant away or gives it
+back (`src/host/HostPermissions.ns`).  Nothing is refused yet.  Found on
+the way: @307's soup "Packages" is the Extras drawer's, its package
+entries those with a `pkgRef`; a new soup made on the internal store at
+the moment the host's NewtonScript applications start failed (-10606), so
+the first scan waits two seconds.
+
 ## 2026-11-12: Modern additions - ink kept, marks, checkboxes, lists, live details
 
 On branch `modern` (`docs/modern/`), each off unless the Host panel or its

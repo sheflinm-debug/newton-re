@@ -1,0 +1,92 @@
+// Package permissions recorded (docs/modern/permissions.md;
+// host/HostPermissions.ns).  With NEWTON_PERMISSIONS=1 and the Monaco font
+// package installed: the package, which declares nothing, is recorded as
+// written for older Newtons - every soup, the network to be asked for; a
+// declaration is turned into its grants (ItemsOf); the Permissions
+// application in Extras lists the package, and a tap on its network grant
+// gives it, a second takes it back.  Without it there is no application
+// and no record (ctests host.NewtonPermissions and ...off).
+//
+//   NEWTON_PERMISSIONS=1 build/host/host/newton --display 320x480 --headless 120 //       --package fixtures/packages/fonts/monaco.pkg --script src/host/demo/permissions.ns
+//
+// Leaves build/permissions-list.pgm (the application).
+
+HostInclude("common.ns");			// waitFor, walkSetup
+
+pmName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+pmTap := func(x, y) begin PenDown(x, y); PenUp(); end;
+
+pmYesNo := func(x) if x then "true" else "nil";
+
+// the Monaco package's record (nil: none yet)
+pmRecord := func()
+  begin
+    local perms := GetGlobalVar('|HostPermissions:host|);
+    local found := nil;
+    local soup := GetStores()[0]:GetSoup(perms.soupName);
+    if soup then
+      begin
+        local cursor := soup:Query({});
+        local e := cursor:Entry();
+        while e do
+          begin
+            if StrPos(e.package, "onaco", 0) then found := e;
+            e := cursor:Next();
+          end;
+      end;
+    found;
+  end;
+
+call walkSetup with (pmName, func() begin
+    local on := HostFeatureOn('permissions);
+    Print("permissions: HostFeatureOn " & call pmYesNo with (on) & ", the application " & call pmYesNo with (GetRoot().|Permissions:host|));
+    if not on then
+      begin
+        Print("permissions: done");
+        return HostQuit();
+      end;
+    local perms := GetGlobalVar('|HostPermissions:host|);
+    call waitFor with ("permissions: the package recorded", pmRecord, func() begin
+        local r := call pmRecord with ();
+        Print("permissions: recorded " & r.package & ", declared " & call pmYesNo with (r.declared) & ", "
+          & Length(r.items) & " items: " & r.items[0].label);
+        Print("permissions: Names granted " & call pmYesNo with (perms:Granted(r.package, "soup:Names"))
+          & ", network granted " & call pmYesNo with (perms:Granted(r.package, "network")));
+        // a declaration, turned into grants
+        local items := perms:ItemsOf({soups: {|Names|: 'read, |Notes|: 'readWrite}, ownSoups: ["Demo:SIG"],
+          network: ['inet], send: true});
+        local labels := "";
+        foreach i, item in items do labels := labels & (if i > 0 then "; " else "") & item.label;
+        Print("permissions: a declaration's grants: " & labels);
+        local app := GetRoot().|Permissions:host|;
+        app:Open();
+        call waitFor with ("permissions: the list", func() app.viewCObject and app.lines, func() begin
+            // the package's network line (after its name, the note that it declares nothing and its first grant)
+            local index := nil;
+            foreach i, line in app.lines do
+              if not index and line.item and StrEqual(line.item.id, "network") and StrEqual(line.package, r.package) then
+                index := i;
+            Print("permissions: the list has " & Length(app.lines) & " lines, the network grant at " & index);
+            AddDelayedCall(func() begin
+                local lb := app.listView:GlobalBox();
+                local y := lb.top + app.listView:HeaderHeight();
+                for i := app.scroll to index - 1 do y := y + app:LineHeight(app.lines[i]);
+                y := y + app:LineHeight(app.lines[index]) div 2;
+                call pmTap with (lb.left + 14, y);
+                call waitFor with ("permissions: granted", func() perms:Granted(r.package, "network"), func() begin
+                    Print("permissions: tapped, network granted " & call pmYesNo with (perms:Granted(r.package, "network")));
+                    ScreenSnapshot("build/permissions-list.pgm");
+                    AddDelayedCall(func() begin
+                        call pmTap with (lb.left + 14, y);
+                        call waitFor with ("permissions: taken back", func() not perms:Granted(r.package, "network"), func() begin
+                            Print("permissions: tapped again, network granted " & call pmYesNo with (perms:Granted(r.package, "network")));
+                            Print("permissions: done");
+                            HostQuit();
+                          end, 20);
+                      end, nil, 500);
+                  end, 20);
+              end, nil, 500);
+          end, 20);
+      end, 60);
+  end);

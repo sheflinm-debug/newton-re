@@ -24,6 +24,7 @@
 #include "NewtonMemory.h"
 #include "Unicode.h"
 #include "RSSymbols.h"
+#include "host/Features.h"
 
 // the characters a phrase's end may carry that are not part of it
 const Ref	kTrailingMarks = MAKEMAGICPTR(249);
@@ -54,6 +55,36 @@ static Ref
 AssistantSlip(void)
 {
 	return GetFrameSlotRef(RefVar(gRootView->fContext), RSSYMassistant);
+}
+
+
+// DEVIATION (host addition; host/Features.h's kFeatureAssistant,
+// docs/modern/assistant.md): a sentence the parse finds no task for
+// handed to the host's engine (host/HostAssist.ns, the global
+// HostAssist:host) before "I don't understand" is said.  ==> true when the
+// engine took it - it opens the task's slip, or says it does not
+// understand, when its answer comes.
+static Boolean
+AskAssistEngine(RefArg sentence)
+{
+	if (!HostFeature(kFeatureAssistant) || !IsString(sentence))
+		return false;
+	RefVar engine(GetFrameSlotRef(gVarFrame, RefVar(Intern((char*) "HostAssist:host"))));
+	if (!IsFrame(engine))
+		return false;
+	RefVar taken;
+	newton_try
+	{
+		RefVar args(MakeArray(1));
+		SetArraySlot(args, 0, sentence);
+		taken = DoMessage(engine, RefVar(Intern((char*) "Understand")), args);
+	}
+	newton_catch_all
+	{
+		taken = NILREF;
+	}
+	end_try;
+	return NOTNIL(taken);
 }
 
 
@@ -183,6 +214,8 @@ parseUtter(RefArg rcvr, RefArg sentence)
 		DriveTaskSlip(rcvr, chosen);
 		return chosen;
 	}
+	if (AskAssistEngine(sentence))		// DEVIATION (see above)
+		return NILREF;
 	result = AllocateArray(RSSYMarray, 1);
 	DoMessage(assistant, RSSYMduh, result);
 	return NILREF;
