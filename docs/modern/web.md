@@ -1,6 +1,7 @@
 # Browsing the web
 
-**Status: a proposal.** Facts about the engines here are from general
+**Status: a proposal; tier 2 built (2026-11-12) - pages as Newton text
+(State).** Facts about the engines here are from general
 knowledge, not checked for this page: their state, sizes and licences must
 be confirmed before one is chosen.
 
@@ -93,3 +94,78 @@ unaffected.
 1. Whether tier 2 alone is enough for a first version: it is perhaps a
    tenth of the work and fits every device.
 2. The engine for tier 1, after its size and licence are confirmed.
+
+## State (2026-11-12, branch `modern`)
+
+Built: tier 2, behind the Host panel's "Web" (`host/Features.h`'s
+`kFeatureWeb`, `NEWTON_WEB`). The owner had said to carry on without
+asking, so decision 1 was taken as this page suggests: tier 2 first.
+
+- **Fetching** (`host/HostWeb.cpp` over the IPP printers' socket,
+  `print/host/HostIPPSocket.h`): HTTP/1.1 GET with `Connection: close`,
+  plain or over TLS. An https site must be vouched for by the system's
+  store (`NEWTON_WEB_TRUST_ANY` for a test server). Redirects are
+  followed, five at most. A page may be 16 MB at most, and a fetch gives
+  up after 30 s without progress.
+- **What comes back:** an HTML or text answer is made a page. Anything
+  else - a CSV, a PDF, a picture - is saved into the Files folder's
+  Downloads (`files.md`), a number added when the name is taken.
+- **Reading a page** (`host/HostWebPage.cpp`, plain C++, ctest
+  `host.WebPage`):
+  - The HTTP answer is taken apart (chunked or not; the type and charset).
+    UTF-8, or ISO 8859-1 and Windows-1252 made UTF-8 - the header's
+    charset, else the page's own `<meta>`.
+  - The HTML is read into a small tree as browsers read it: implied ends
+    of paragraphs, items and cells; raw script and style; entities.
+  - The article is found as reader views find it (the idea of Mozilla's
+    Readability, written here from scratch). Navigation, headers,
+    footers, sidebars, forms, scripts and whatever is classed as a menu,
+    comment, advertisement, cookie banner and the like are left out. Each
+    paragraph of some length scores its parent, and half its grandparent,
+    by its length and commas. The best element, with its siblings that
+    score near it, is the article; the whole body is used when nothing
+    scores.
+  - The page is written out as headings (with their level), paragraphs,
+    list items, quotations, preformatted text, a table's rows joined with
+    " | ", and "[picture: ...]" for each picture. Each link becomes "[n]"
+    after its words, made absolute (`<base>` honoured; `javascript:`,
+    `mailto:` and in-page links left out).
+- **The Web application** (`src/host/HostWeb.ns`, Extras):
+  - An address line that also searches (`HostWebAddressOf`): an address
+    is taken as it is ("http://" added), a numeric host, `localhost` or
+    one with a port too, and anything else goes to the search engine,
+    `NEWTON_WEB_SEARCH` (DuckDuckGo's HTML page by default).
+  - The page is drawn as Newton text: the heading sizes, items with a
+    bullet, quotations in italic, link lines underlined.
+  - A tap on a line with a link goes there, or opens a pop-up when the
+    line has several; the scroll arrows page; Back goes back.
+  - **Keep** makes the page a Notepad note: its paragraphs, headings in
+    bold, and the links listed at the end with `fromURL`. So it can be
+    filed, found, written on, marked and synced.
+  - Every page shown goes into the soup "Web History:host".
+- Demo `src/host/demo/web.ns`, ctests `host.NewtonWeb` and `.off`, against
+  `tools/host/httpserve.py` serving `src/host/demo/web` (a news page with
+  menus, a cookie banner, a sidebar, an advertisement and a footer around
+  its article; a second page; ISO 8859-1; plain text; a CSV). It covers a
+  redirect, the article without the site's own parts, a link tapped,
+  Back, the Latin-1 page, a note kept, a download, and a search address.
+  The tests point the search engine at a dead local address, so nothing
+  leaves the machine.
+
+Not built (NOT YET): tiers 1 and 3 (decision 2, the engine, is still the
+owner's); pictures shown (they are named); forms and cookies; bookmarks
+(history only); a page saved as PDF; compressed answers (`identity` is
+asked for); the helper that does the fetching for the ESP32.
+
+Found on the way:
+- A symbol keeps the case it was first interned with. The ROM's own
+  `'Web` made `HostFeatureOn('web)` and the Host panel's setter miss the
+  feature; both now compare without case.
+- An application that lays its children out by their justification is
+  not drawn whole at its first drawing (the strips over the Notepad's
+  header and bar are left to the Notepad), so `HostWeb.ns` asks for a
+  redraw once it is open (`AddDeferredSend(self, 'Dirty, [])`).
+- An earlier version of the address rule (a letter after the last dot)
+  took "127.0.0.1:PORT/articles" for words to search for, and one test
+  run sent that string to DuckDuckGo; hence the dead local search engine
+  in the tests.

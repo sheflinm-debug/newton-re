@@ -302,7 +302,7 @@
 				mailFailure := "nobody to send it to"
 			else begin
 				if not item.hidden then
-					self:SetStatusDialog('Sending, 'vStatusTitle, {statusText: "Sending…\u", titleText: subject});
+					self:SetStatusDialog('Sending, 'vStatusTitle, {statusText: "Sending\u2026\u", titleText: subject});
 				job := HostMailSend(account, recipients, subject, if text then text else "");
 				if IsFrame(job) then begin
 					mailFailure := job.error;

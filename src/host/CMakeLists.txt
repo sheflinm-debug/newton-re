@@ -207,6 +207,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostSync.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostWeb.ns, the Web application (docs/modern/web.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostWebSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostWeb.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostWebSource.cpp -DNAME=gHostWebSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostWeb.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -241,6 +249,7 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                HostPictures.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostGallerySource.cpp
                HostMail.cpp HostMailEngine.cpp HostMailFormat.cpp HostMailKeys.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp
                HostSync.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostSyncSource.cpp
+               HostWeb.cpp HostWebPage.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostWebSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial hal_host_image)
 if(WIN32)
@@ -1111,6 +1120,13 @@ add_executable(test_HostMail tests/test_HostMail.cpp HostMailFormat.cpp)
 target_include_directories(test_HostMail PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME host.MailFormat COMMAND test_HostMail)
 set_tests_properties(host.MailFormat PROPERTIES PASS_REGULAR_EXPRESSION "test_HostMail: all passed")
+# a web page made Newton text (HostWebPage.h: no Newton headers): URLs,
+# HTTP responses, and the article of demo/web's pages as a reader view
+# finds it
+add_executable(test_HostWeb tests/test_HostWeb.cpp HostWebPage.cpp)
+target_include_directories(test_HostWeb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME host.WebPage COMMAND test_HostWeb ${CMAKE_CURRENT_SOURCE_DIR}/demo/web)
+set_tests_properties(host.WebPage PROPERTIES PASS_REGULAR_EXPRESSION "test_HostWeb: all passed")
 # the sums that turn the display onto the reMarkable's panel image
 # (remarkable/PanelTurn.h: no platform headers, so tested on every host)
 add_executable(test_PanelTurn remarkable/tests/test_PanelTurn.cpp)
@@ -1705,6 +1721,36 @@ set_tests_properties(host.NewtonSync.off PROPERTIES TIMEOUT 180
                      ENVIRONMENT "NEWTON_SYNC=0;NEWTON_SYNC_FOLDER=${CMAKE_BINARY_DIR}/sync-off-folder"
                      PASS_REGULAR_EXPRESSION "sync-a1: HostFeatureOn nil.*sync-a1: done"
                      FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+
+# the Web application, pages as Newton text (docs/modern/web.md; host/HostWeb.ns):
+# demo/web served by tools/host/httpserve.py - a redirect, the article, a
+# link, Back, ISO 8859-1, a page kept as a note, a download into a Files
+# folder emptied first; the search engine a dead local address, so nothing
+# leaves the machine
+if(Python3_EXECUTABLE)
+  foreach(state 1 0)
+    if(state)
+      set(name host.NewtonWeb)
+      set(pass "web: HostFeatureOn true, the application true.*the article at http://127.0.0.1:[0-9]+/articles/, 13 blocks, the site's own parts left out true.*followed the link to .How the money was raised.*Back to .Harbour Gazette.*the ISO 8859-1 page's title as written true, its text true.*kept as a note of 15 paragraphs, from http://127.0.0.1:[0-9]+/articles/, its links listed true.*the CSV saved as Downloads/costs.csv, reading .item,cost.*a search http://127.0.0.1:9/search.q=harbour.lighthouse.*5 pages in the history.*web: done")
+    else()
+      set(name host.NewtonWeb.off)
+      set(pass "web: HostFeatureOn nil, the application nil.*web: done")
+    endif()
+    add_test(NAME ${name}.clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/web-test-${state})
+    set_tests_properties(${name}.clean PROPERTIES FIXTURES_SETUP web_clean_${state})
+    add_test(NAME ${name}
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/host/httpserve.py
+                     --dir ${CMAKE_CURRENT_SOURCE_DIR}/demo/web --port 0 --
+                     $<TARGET_FILE:newton> --display 320x480 --headless 150
+                     --store ${CMAKE_BINARY_DIR}/web-${state}.store --erase
+                     --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/web.ns
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+    set_tests_properties(${name} PROPERTIES TIMEOUT 220 FIXTURES_REQUIRED web_clean_${state}
+                         ENVIRONMENT "NEWTON_WEB=${state};NEWTON_FILES_ROOT=${CMAKE_BINARY_DIR}/web-test-${state};NEWTON_WEB_SEARCH=http://127.0.0.1:9/search?q=%s"
+                         PASS_REGULAR_EXPRESSION "${pass}"
+                         FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
+  endforeach()
+endif()
 
 # checkboxes in a note (docs/modern/structure.md; views/MarginMarks.h): the
 # caret's pop-up makes a paragraph a to-do item, its box ticked and

@@ -1,0 +1,467 @@
+// Web: pages as Newton text (docs/modern/web.md, tier 2).  Compiled into
+// newton (HostWebSource.cpp, made by src/cmake/EmbedText.cmake) and evaluated
+// at boot by HostInstallWeb (host/HostWeb.cpp); the frame is kept in the
+// global HostWeb:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureWeb - the Host panel's
+// "Web", NEWTON_WEB): the period browsers (NetHopper, Newt's Cape) stay as
+// they are; this is the second tier of web.md - the reader view.  "Web" in
+// Extras: an address line that also searches (HostWebAddressOf: anything
+// that is not an address goes to NEWTON_WEB_SEARCH); a page is fetched by
+// the host (HTTP and HTTPS, redirects followed) and its article - not its
+// menus, advertisements, scripts or footers - shown as Newton text:
+// headings, paragraphs, items, quotations, a table's rows, "[picture:
+// ...]", each link numbered "[n]" after its words.  A tap on a line with a
+// link goes there (a pop-up when it has several); the scroll arrows page;
+// Back goes back; Keep makes the page a note in the Notepad - its
+// paragraphs, the links listed at its end, `fromURL` - so it can be filed,
+// found, written on, marked and synced.  Anything that is not a page is
+// saved into the Files folder's Downloads.  Every page seen goes into the
+// soup "Web History:host".
+//
+// NOT YET (web.md): tier 1 (a full engine, owner decision 2) and tier 3;
+// pictures shown (they are named); forms; bookmarks; a cookie; the page
+// kept as PDF; FrogFind-style help for the ESP32.
+
+{
+	appSymbol: '|Web:host|,
+	historySoup: "Web History:host",
+
+	app: {
+		viewClass: 74,							// clView
+		viewFlags: 5,							// vVisible, vApplication
+		viewFormat: 273,
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		declareSelf: 'base,
+		viewFont: 10240,
+		appSymbol: '|Web:host|,
+		title: "Web",
+		ReOrientToScreen: func() :Relayout(),
+
+		kText: 10240,
+		kSmall: 9216,
+		kBold: 1058816,
+		kH1: 1062912,							// 14 point bold
+		kH2: 1060864,							// 12 point bold
+		kQuote: 2107392,						// 10 point italic (2 << 20)
+
+		page: nil,								// what HostWebPoll answered
+		lines: nil,								// [{text, font, indent, links}]
+		top: 0,									// the first line shown
+		job: nil,
+		status: nil,
+		history: nil,							// the pages before, for Back
+		addressLine: nil,
+		pageView: nil,
+
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight);
+			history := [];
+		end,
+
+		viewSetupDoneScript: func()
+		begin
+			foreach v in :ChildViewFrames() do
+				if v.role then self.(v.role) := v;
+			:Layout();
+			// (drawn whole once it is open: the first drawing leaves the
+			// strips over the Notepad's header and bar to the Notepad)
+			AddDeferredSend(self, 'Dirty, []);
+		end,
+
+		viewQuitScript: func()
+		begin
+			job := nil;
+			lines := nil;
+		end,
+
+		Relayout: func()
+		begin
+			local p := GetAppParams();
+			SetValue(self, 'viewBounds, RelBounds(p.appAreaLeft, p.appAreaTop, p.appAreaWidth, p.appAreaHeight));
+			:Layout();
+		end,
+
+		// (the children's bounds are the parent's, by their justification)
+		Layout: func()
+		begin
+			if page then :MakeLines();
+			if pageView then pageView:Dirty();
+		end,
+
+		Web: func() GetGlobalVar('|HostWeb:host|),
+
+		// --- going somewhere ---
+
+		Typed: func() if addressLine then addressLine.entryLine.text else "",
+
+		Go: func(typed)
+		begin
+			if not IsString(typed) or StrLen(typed) = 0 then return nil;
+			:Fetch(HostWebAddressOf(typed), true);
+		end,
+
+		Fetch: func(url, remember)
+		begin
+			if remember and page and page.url then AddArraySlot(history, page.url);
+			SetValue(addressLine.entryLine, 'text, url);
+			local started := HostWebFetch(url);
+			if IsFrame(started) then return :Failed(started.error);
+			job := started;
+			status := "Loading\u2026\u";
+			pageView:Dirty();
+			local me := self;
+			AddDelayedCall(func() me:Poll(), nil, 150);
+		end,
+
+		Poll: func()
+		begin
+			if not job or not viewCObject then return nil;
+			local answer := HostWebPoll(job);
+			local me := self;
+			if answer = 'busy then
+				return AddDelayedCall(func() me:Poll(), nil, 150);
+			job := nil;
+			if answer.error then return :Failed(answer.error);
+			if answer.download then begin
+				status := "Saved to " & answer.download & " (" & answer.size & " bytes)";
+				Print("web: saved " & answer.download);
+				return pageView:Dirty();
+			end;
+			:Show(answer.page);
+		end,
+
+		Failed: func(why)
+		begin
+			job := nil;
+			status := "Not loaded: " & why;
+			Print("web: " & status);
+			pageView:Dirty();
+		end,
+
+		Show: func(p)
+		begin
+			page := p;
+			status := nil;
+			top := 0;
+			SetValue(addressLine.entryLine, 'text, p.url);
+			:MakeLines();
+			:Web():Remember(p);
+			Print("web: shown \"" & p.title & "\", " & Length(p.blocks) & " blocks, " & Length(p.links) & " links");
+			pageView:Dirty();
+		end,
+
+		Back: func()
+		begin
+			if Length(history) = 0 then return nil;
+			local url := history[Length(history) - 1];
+			SetLength(history, Length(history) - 1);
+			:Fetch(url, nil);
+		end,
+
+		// --- the page as lines ---
+
+		FontOf: func(block)
+			if block.kind = 'heading then (if block.level <= 1 then kH1 else if block.level = 2 then kH2 else kBold)
+			else if block.kind = 'quote then kQuote
+			else if block.kind = 'pre then kSmall
+			else kText,
+
+		MakeLines: func()
+		begin
+			lines := [];
+			local width := (pageView:LocalBox()).right - 12;
+			if StrLen(page.title) > 0 then begin
+				foreach l in :Wrap(page.title, kBold, width) do
+					AddArraySlot(lines, {text: l, font: kBold, indent: 0, links: :LinksIn(l)});
+				AddArraySlot(lines, {text: "", font: kSmall, indent: 0, links: nil});
+			end;
+			foreach b in page.blocks do begin
+				local font := :FontOf(b);
+				local indent := if b.kind = 'item then 10 else if b.kind = 'quote then 12 else 0;
+				local text := if b.kind = 'item then "\u2022\u " & b.text else b.text;
+				foreach l in :Wrap(text, font, width - indent) do
+					AddArraySlot(lines, {text: l, font: font, indent: indent, links: :LinksIn(l)});
+				AddArraySlot(lines, {text: "", font: kSmall, indent: 0, links: nil});
+			end;
+		end,
+
+		// a text's lines no wider than width, broken at spaces and returns
+		Wrap: func(text, font, width)
+		begin
+			local out := [];
+			local line := "";
+			local word := "";
+			for i := 0 to StrLen(text) do begin
+				local c := if i < StrLen(text) then text[i] else nil;
+				if not c or c = $  or c = $\n then begin
+					if StrLen(word) > 0 then begin
+						local tried := if StrLen(line) > 0 then line & " " & word else word;
+						if StrFontWidth(tried, font) <= width or StrLen(line) = 0 then line := tried
+						else begin
+							AddArraySlot(out, line);
+							line := word;
+						end;
+					end;
+					word := "";
+					if c = $\n then begin
+						AddArraySlot(out, line);
+						line := "";
+					end;
+				end else
+					word := word & c;
+			end;
+			if StrLen(line) > 0 or Length(out) = 0 then AddArraySlot(out, line);
+			out;
+		end,
+
+		// the link numbers "[n]" in a line
+		LinksIn: func(text)
+		begin
+			local found := nil;
+			local i := 0;
+			while i < StrLen(text) do begin
+				if text[i] = $[ then begin
+					local j := i + 1;
+					local n := 0;
+					while j < StrLen(text) and text[j] >= $0 and text[j] <= $9 do begin
+						n := n * 10 + (Ord(text[j]) - Ord($0));
+						j := j + 1;
+					end;
+					if j > i + 1 and j < StrLen(text) and text[j] = $] and page and n >= 1 and n <= Length(page.links) then begin
+						if not found then found := [];
+						AddArraySlot(found, n);
+					end;
+					i := j;
+				end else
+					i := i + 1;
+			end;
+			found;
+		end,
+
+		LineHeight: func(line) FontHeight(line.font) + 2,
+
+		// the line under a point of the page view, nil when none
+		LineAt: func(y)
+		begin
+			local at := 4;
+			if not lines then return nil;
+			for i := top to Length(lines) - 1 do begin
+				local h := :LineHeight(lines[i]);
+				if y >= at and y < at + h then return lines[i];
+				at := at + h;
+			end;
+			nil;
+		end,
+
+		// how many lines fit from `from`
+		Fits: func(from)
+		begin
+			local room := (pageView:LocalBox()).bottom - 4;
+			local n := 0;
+			local used := 0;
+			while from + n < Length(lines) and used + :LineHeight(lines[from + n]) <= room do begin
+				used := used + :LineHeight(lines[from + n]);
+				n := n + 1;
+			end;
+			Max(1, n);
+		end,
+
+		viewScrollDownScript: func()
+		begin
+			if lines and top + :Fits(top) < Length(lines) then begin
+				top := top + :Fits(top);
+				pageView:Dirty();
+			end;
+			true;
+		end,
+
+		viewScrollUpScript: func()
+		begin
+			if top > 0 then begin
+				// back a page's worth
+				local n := 0;
+				local room := (pageView:LocalBox()).bottom - 4;
+				local used := 0;
+				while top > 0 and used + :LineHeight(lines[top - 1]) <= room do begin
+					top := top - 1;
+					used := used + :LineHeight(lines[top]);
+				end;
+				pageView:Dirty();
+			end;
+			true;
+		end,
+
+		TapLine: func(line)
+		begin
+			if not line or not line.links then return nil;
+			if Length(line.links) = 1 then
+				return :Fetch(page.links[line.links[0] - 1], true);
+			local items := [];
+			foreach n in line.links do AddArraySlot(items, "[" & n & "] " & page.links[n - 1]);
+			pageView.choices := line.links;
+			DoPopup(items, 20, 20, pageView);
+		end,
+
+		// --- the page kept as a note ---
+
+		Keep: func()
+		begin
+			if not page then return nil;
+			local p := GetAppParams();
+			local width := p.appAreaWidth - 20;
+			local plain := 18435;
+			local bold := 18435 + 1048576;
+			local data := [];
+			local y := 6;
+			local add := func(text, font) begin
+				local lines := 1 + StrFontWidth(text, font) div Max(1, width - 8);
+				for i := 0 to StrLen(text) - 1 do if text[i] = $\n then lines := lines + 1;
+				local h := lines * (FontHeight(font) + 2) + 4;
+				AddArraySlot(data, {viewStationery: 'para, viewBounds: {left: 10, top: y, right: 10 + width, bottom: y + h},
+					text: text, viewFont: font});
+				y := y + h + 4;
+			end;
+			if StrLen(page.title) > 0 then call add with (page.title, bold);
+			foreach b in page.blocks do
+				call add with (if b.kind = 'item then "\u2022\u " & b.text else b.text, if b.kind = 'heading then bold else plain);
+			local links := "From " & page.url;
+			foreach i, u in page.links do links := links & "\n[" & (i + 1) & "] " & u;
+			call add with (links, plain);
+			local note := {class: 'paperroll, viewStationery: 'paperroll, timestamp: Time(), height: Max(y + 10, 60),
+				labels: nil, data: data, fromURL: page.url};
+			local entry := GetUnionSoup("Notes"):AddToDefaultStoreXmit(note, appSymbol);
+			status := "Kept as a note";
+			pageView:Dirty();
+			Print("web: kept \"" & page.title & "\" as a note of " & Length(data) & " paragraphs");
+			entry;
+		end,
+
+		viewChildren: [
+			{
+				_proto: @189,					// protoLabelInputLine
+				role: 'addressLine,
+				viewBounds: {left: 4, top: 4, right: -50, bottom: 20},
+				viewJustify: 48,				// vjParentFullH: to 50 from the right
+				label: "Address",
+				labelFont: 1058816,
+				entryFont: 9216
+			},
+			{
+				_proto: @226,					// protoTextButton
+				role: 'goButton,
+				viewBounds: {left: -42, top: 4, right: -4, bottom: 18},
+				viewJustify: 32 + 2,			// vjParentRightH, vjCenterH (the text)
+				text: "Go",
+				buttonClickScript: func() base:Go(base:Typed())
+			},
+			{
+				viewClass: 74,
+				viewFlags: 513,					// vVisible, vClickable
+				viewFormat: 0,
+				role: 'pageView,
+				viewBounds: {left: 0, top: 28, right: 0, bottom: -30},
+				viewJustify: 48 + 192,			// vjParentFullH, vjParentFullV
+				choices: nil,
+				viewDrawScript: func()
+				begin
+					local b := :LocalBox();
+					:DrawShape(MakeLine(0, 0, b.right, 0), {penSize: 1});
+					if base.status then begin
+						:DrawShape(MakeText(base.status, 6, 6, b.right - 6, 6 + FontHeight(base.kSmall) * 2 + 4), {font: base.kSmall});
+						if not base.lines then return;
+					end;
+					if not base.lines then
+						return :DrawShape(MakeText("Write an address or words to search for, then Go.", 6, 10, b.right - 6, 50), {font: base.kSmall});
+					local y := 4 + (if base.status then FontHeight(base.kSmall) + 6 else 0);
+					local i := base.top;
+					while i < Length(base.lines) and y + base:LineHeight(base.lines[i]) <= b.bottom do begin
+						local line := base.lines[i];
+						local h := base:LineHeight(line);
+						:DrawShape(MakeText(line.text, 6 + line.indent, y, b.right - 2, y + h), {font: line.font});
+						if line.links then
+							:DrawShape(MakeLine(6 + line.indent, y + h - 1, 6 + line.indent + StrFontWidth(line.text, line.font), y + h - 1),
+								{penSize: 1, penPattern: 3});
+						y := y + h;
+						i := i + 1;
+					end;
+				end,
+				viewClickScript: func(unit)
+				begin
+					local box := :GlobalBox();
+					base:TapLine(base:LineAt(GetPoint(5, unit) - box.top - (if base.status then FontHeight(base.kSmall) + 6 else 0)));
+					true;
+				end,
+				pickActionScript: func(index)
+				begin
+					if choices then base:Fetch(base.page.links[choices[index] - 1], true);
+				end
+			},
+			{
+				_proto: @73,					// protoStatusBar
+				menuLeftButtons: [
+					{_proto: @226, text: "Back", buttonClickScript: func() base:Back()},
+					{_proto: @226, text: "Keep", buttonClickScript: func() base:Keep()}
+				],
+				menuRightButtons: [
+					{_proto: @166}				// protoClosebox
+				]
+			}
+		]
+	},
+
+	// a page seen, into the history
+	Remember: func(page)
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(historySoup) then
+			store:CreateSoupXmit(historySoup, [], nil);
+		store:GetSoup(historySoup):AddXmit({url: page.url, title: page.title, seen: Time()}, appSymbol);
+	end,
+
+	MakeIcon: func()
+	begin
+		local bitmap := MakeBitmap(28, 26, nil);
+		DrawIntoBitmap(MakeOval(3, 2, 25, 24), {penSize: 2}, bitmap);
+		DrawIntoBitmap(MakeOval(9, 2, 19, 24), {penSize: 1}, bitmap);
+		DrawIntoBitmap(MakeLine(3, 13, 25, 13), {penSize: 1}, bitmap);
+		bitmap;
+	end,
+
+	IconEntry: func()
+	begin
+		local extras := GetUnionSoup(@307.name);
+		if not extras then return nil;
+		local cursor := Query(extras, {type: 'index});
+		local e;
+		while (e := cursor:Entry()) do begin
+			if e.app = appSymbol then return e;
+			cursor:Next();
+		end;
+		nil;
+	end,
+
+	Start: func()
+	begin
+		if not HostFeatureOn('web) then
+			return :Stop();
+		if not GetRoot().(appSymbol) then
+			GetRoot().(appSymbol) := BuildContext(app);
+		if not :IconEntry() then begin
+			local extras := GetUnionSoup(@307.name);
+			if extras then
+				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Web", app: appSymbol,
+					icon: :MakeIcon(), labels: nil, sequence: 36, _tagList: ['_icon, '_noBackup]}, nil);
+		end;
+	end,
+
+	Stop: func()
+	begin
+		local e := :IconEntry();
+		if e then EntryRemoveFromSoupXmit(e, nil);
+		local base := GetRoot().(appSymbol);
+		if base and base.viewCObject then base:Close();
+	end
+}

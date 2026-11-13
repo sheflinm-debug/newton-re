@@ -1,0 +1,127 @@
+// The Web application, pages as Newton text (docs/modern/web.md, tier 2;
+// host/HostWeb.ns, host/HostWeb.cpp, host/HostWebPage.cpp), against
+// tools/host/httpserve.py serving src/host/demo/web (ctest host.NewtonWeb):
+//   - "127.0.0.1:PORT/articles" written in the address line: made an
+//     address, the server's redirect to /articles/ followed, the article
+//     shown without the site's menus, banner, sidebar, advertisement or
+//     footer;
+//   - a tap on the line with its link: the next page; Back: the first again;
+//   - a page in ISO 8859-1 shown as written;
+//   - the page kept as a note in the Notepad, its links listed;
+//   - a CSV saved into the Files folder's Downloads;
+//   - words that are not an address made a search.
+//
+//   NEWTON_WEB=1 NEWTON_FILES_ROOT=build/web-demo python tools/host/httpserve.py
+//       --dir src/host/demo/web --port 0 -- build/host/host/newton --display 320x480
+//       --headless 120 --script src/host/demo/web.ns
+//
+// Leaves build/web-article.pgm.
+
+HostInclude("common.ns");			// waitFor, walkSetup, tapAt
+
+wbName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+wbHost := "127.0.0.1:" & HostGetEnv("NEWTON_HTTP_PORT");
+
+wbYesNo := func(x) if x then "true" else "nil";
+
+wbApp := func() GetRoot().|Web:host|;
+
+wbTitle := func() if (call wbApp with ()).page then (call wbApp with ()).page.title else "";
+
+// a line of the shown page holding this text (nil: none)
+wbLineWith := func(text) begin
+  local found := nil;
+  local app := call wbApp with ();
+  if app.lines then
+    foreach i, l in app.lines do
+      if not found and StrPos(l.text, text, 0) then found := i;
+  found;
+end;
+
+wbAllText := func() begin
+  local all := "";
+  foreach l in (call wbApp with ()).lines do all := all & l.text & " ";
+  all;
+end;
+
+wbSteps := [
+  func(next) begin
+    local on := HostFeatureOn('web);
+    Print("web: HostFeatureOn " & call wbYesNo with (on) & ", the application " & call wbYesNo with (call wbApp with ()));
+    if not on then begin
+      Print("web: done");
+      return HostQuit();
+    end;
+    local app := call wbApp with ();
+    app:Open();
+    call waitFor with ("web: the application", func() app.viewCObject and app.addressLine, func() begin
+        SetValue(app.addressLine.entryLine, 'text, wbHost & "/articles");
+        app:Go(app:Typed());
+        call waitFor with ("web: the article", func() StrPos(call wbTitle with (), "lighthouse", 0), next, 30);
+      end, 20);
+  end,
+  func(next) begin
+    local app := call wbApp with ();
+    local all := call wbAllText with ();
+    local left := "";
+    foreach w in ["Sport", "cookies", "Most read", "Buy one", "All rights reserved"] do
+      if StrPos(all, w, 0) then left := left & " " & w;
+    Print("web: the article at " & app.page.url & ", " & Length(app.page.blocks) & " blocks, the site's own parts left out "
+      & (if StrLen(left) = 0 then "true" else "nil:" & left));
+    AddDelayedCall(func() begin
+        ScreenSnapshot("build/web-article.pgm");
+        // the line with the link, tapped
+        local i := call wbLineWith with ("Read how the money");
+        while i and i >= app.top + app:Fits(app.top) do app:viewScrollDownScript();
+        local y := 4;
+        for k := app.top to i - 1 do y := y + app:LineHeight(app.lines[k]);
+        local box := app.pageView:GlobalBox();
+        call tapAt with (box.left + 40, box.top + y + 4);
+        call waitFor with ("web: the linked page", func() StrPos(call wbTitle with (), "money was raised", 0), next, 30);
+      end, nil, 1000);
+  end,
+  func(next) begin
+    Print("web: followed the link to \"" & call wbTitle with () & "\"");
+    (call wbApp with ()):Back();
+    call waitFor with ("web: back", func() StrPos(call wbTitle with (), "lighthouse", 0), next, 30);
+  end,
+  func(next) begin
+    Print("web: Back to \"" & call wbTitle with () & "\"");
+    local app := call wbApp with ();
+    app:Fetch("http://" & wbHost & "/latin1.html", true);
+    call waitFor with ("web: the Latin-1 page", func() StrPos(call wbTitle with (), "news", 0), next, 30);
+  end,
+  func(next) begin
+    local all := call wbAllText with ();
+    Print("web: the ISO 8859-1 page's title as written " & call wbYesNo with (StrEqual(call wbTitle with (), "Caf\u00E9\u news"))
+      & ", its text " & call wbYesNo with (StrPos(all, "cr\u00E8\ume br\u00FB\ul\u00E9\ue", 0)));
+    local app := call wbApp with ();
+    app:Back();
+    call waitFor with ("web: back again", func() StrPos(call wbTitle with (), "lighthouse", 0), next, 30);
+  end,
+  func(next) begin
+    local note := (call wbApp with ()):Keep();
+    local last := note.data[Length(note.data) - 1].text;
+    Print("web: kept as a note of " & Length(note.data) & " paragraphs, from " & note.fromURL & ", its links listed "
+      & call wbYesNo with (StrPos(last, "[1] http://" & wbHost & "/articles/page2.html", 0)));
+    (call wbApp with ()):Fetch("http://" & wbHost & "/files/costs.csv", true);
+    call waitFor with ("web: the download", func() HostFilesExists("Downloads/costs.csv"), next, 30);
+  end,
+  func(next) begin
+    Print("web: the CSV saved as Downloads/costs.csv, reading \"" & HostFilesReadText("Downloads/costs.csv", 9) & "\"");
+    Print("web: a search " & HostWebAddressOf("harbour lighthouse"));
+    local history := GetUnionSoup("Web History:host");
+    local n := 0;
+    if history then begin
+      local c := history:Query({});
+      while c:Entry() do begin n := n + 1; c:Next(); end;
+    end;
+    Print("web: " & n & " pages in the history");
+    Print("web: done");
+    HostQuit();
+  end
+];
+
+wbRun := func(i) if i < Length(wbSteps) then call wbSteps[i] with (func() call wbRun with (i + 1));
+
+call walkSetup with (wbName, func() AddDelayedCall(func() call wbRun with (0), nil, 1000));

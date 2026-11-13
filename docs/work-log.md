@@ -9,6 +9,23 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - web pages as Newton text
+
+On branch `modern`, behind the Host panel's "Web" (`NEWTON_WEB`): tier 2
+of `docs/modern/web.md`, a reader view. The host fetches over HTTP and
+HTTPS, following redirects (`host/HostWeb.cpp`). `host/HostWebPage.cpp`
+reads the HTML into a small tree and finds the article as reader views do
+(ctest `host.WebPage`). The Web application (`src/host/HostWeb.ns`) shows
+the page as Newton text with numbered links, keeps it as a note, and saves
+anything that is not a page into Downloads. Found on the way: a symbol's
+case is its first interning's (the ROM's `'Web`), so `HostFeatureOn` and
+the panel now compare feature names without case; an application laid
+out by justification needs a redraw once open; the Write tool turns
+NewtonScript `\uXXXX\u` escapes into the characters (and so breaks them) -
+check new `.ns` files for non-ASCII bytes. One test run sent its local
+address to DuckDuckGo as a search before the address rule took numeric
+hosts; the tests now point the engine at a dead local address.
+
 ## 2026-11-12: Modern additions - sync through a folder
 
 On branch `modern`, behind the Host panel's "Sync" (`NEWTON_SYNC`):

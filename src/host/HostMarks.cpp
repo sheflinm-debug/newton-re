@@ -26,6 +26,7 @@
 #include "NewtonExceptions.h"
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include "HostOpenURL.h"
 
@@ -46,10 +47,18 @@ FHostFeatureOn(RefArg /*rcvr*/, RefArg name)
 {
 	if (!IsSymbol(name))
 		return NILREF;
+	// (without case: a symbol keeps the case it was first interned with -
+	//  the ROM's own 'Web is "Web")
 	const char* asked = SymbolName(name);
 	for (int id = 0; id < kFeatureCount; id++)
-		if (strcmp(asked, HostFeatureSetting(id)) == 0)
+	{
+		const char* setting = HostFeatureSetting(id);
+		size_t i = 0;
+		while (asked[i] != 0 && setting[i] != 0 && tolower((unsigned char) asked[i]) == setting[i])
+			i++;
+		if (asked[i] == 0 && setting[i] == 0)
 			return HostFeature(id) ? TRUEREF : NILREF;
+	}
 	return NILREF;
 }
 

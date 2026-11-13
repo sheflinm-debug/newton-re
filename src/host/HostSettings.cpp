@@ -13,6 +13,7 @@
 #include "HostPictures.h"
 #include "HostMail.h"
 #include "HostSync.h"
+#include "HostWeb.h"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -350,11 +351,24 @@ FHostSettingsList(RefArg /*rcvr*/)
 		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
 	// the other modern additions (host/Features.h), each unless its
 	// variable has the say
-	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery", "Internet mail", "Sync" };
+	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery", "Internet mail", "Sync", "Web" };
 	for (int id = 0; id < kFeatureCount; id++)
 		if (!HostFeatureFromEnvironment(id))
 			AddArraySlot(list, RefVar(Item(HostFeatureSetting(id), kFeatureLabels[id], kCheck, HostFeature(id))));
 	return list;
+}
+
+
+// a setting's symbol and a feature's name the same, without case (a symbol
+// keeps the case it was first interned with: the ROM's own 'Web is "Web")
+static bool
+SameSetting(const char* symbolName, const char* setting)
+{
+	size_t i = 0;
+	while (symbolName[i] != 0 && setting[i] != 0
+		   && (symbolName[i] == setting[i] || (symbolName[i] >= 'A' && symbolName[i] <= 'Z' && symbolName[i] + 32 == setting[i])))
+		i++;
+	return symbolName[i] == 0 && setting[i] == 0;
 }
 
 
@@ -440,7 +454,7 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 		return TRUEREF;
 	}
 	for (int id = 0; id < kFeatureCount; id++)
-		if (strcmp(name, HostFeatureSetting(id)) == 0)
+		if (SameSetting(name, HostFeatureSetting(id)))
 		{
 			if (HostFeatureFromEnvironment(id))
 				return NILREF;					// (its variable has the say)
@@ -457,6 +471,8 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 				HostMailFeatureChanged();
 			if (id == kFeatureSync)
 				HostSyncFeatureChanged();
+			if (id == kFeatureWeb)
+				HostWebFeatureChanged();
 #endif
 			return TRUEREF;
 		}
