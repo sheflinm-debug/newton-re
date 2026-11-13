@@ -1,0 +1,74 @@
+// Look inside, step 1 (look-common.ns): the inspector, the Script line, tweaks made.
+HostInclude("look-common.ns");
+
+call lkRun with ("1", func() begin
+  local look := call lkLook with ();
+  local notepad := GetRoot().paperroll;
+
+  // the inspector on the Notepad
+  local slip := look:Inspect(notepad);
+  local protos := 0;
+  foreach l in slip.lines do if BeginsWith(l.text, "proto ") then protos := protos + 1;
+  local own := Length(slip.lines) - 1 - protos;
+  local hasCObject := nil;
+  foreach l in slip.lines do if BeginsWith(l.text, "viewCObject: ") then hasCObject := true;
+  Print("look-1: the Notepad: \"" & slip.lines[0].text & "\", " & protos & " protos in its chain, " & own
+    & " slots of its own, viewCObject among them " & call lkYesNo with (hasCObject));
+
+  // a ROM method's source, and compiled again
+  local source := HostSourceOf(GetRoot().StandardFind);
+  local again := nil;
+  if source then try again := call Compile(source) with () onexception |evt.ex| do again := nil;
+  Print("look-1: StandardFind's source begins \"" & (if source then (look:Split(source))[0] else "none") & "\", compiles again "
+    & call lkYesNo with (IsFunction(again)));
+  slip:Show(GetRoot().StandardFind);
+  Print("look-1: shown as " & Length(slip.lines) & " lines of source");
+  slip:Close();
+
+  // the catcher: a tap on the Notepad's page
+  GetRoot().|Inspect:host|:Open();
+  call tapAt with (150, 220);
+  local picked := GetRoot().|Inspector:host|.shown;
+  local inside := nil;
+  local v := picked;
+  while v and not inside do begin
+    if v = notepad then inside := true;
+    v := v._parent;
+  end;
+  Print("look-1: a tap through Inspect picked a view " & call lkYesNo with (picked and picked.viewCObject)
+    & ", inside the Notepad " & call lkYesNo with (inside));
+  ScreenSnapshot("build/look-inspector.pgm");
+
+  // the Script line, self the Notepad
+  local r := look:RunScript("Length(:ChildViewFrames()) > 0 and inspected.viewCObject <> nil", notepad);
+  local bad := look:RunScript(":NoSuchMethodHere()", notepad);
+  Print("look-1: Script, the Notepad inspected, answered " & look:Short(r.value) & ", a mistake answered an error "
+    & call lkYesNo with (bad.error));
+  GetRoot().|Inspector:host|:Close();
+
+  // tweaks
+  local greeting := look:AddTweak({name: "Greeting", kind: 'function, target: "TweakDemoGreeting",
+    source: "func(who) \"Hello, \" & who"});
+  local dates := look:AddTweak({name: "Short dates say so", kind: 'function, target: "ShortDate",
+    source: "func(t) \"tweaked\""});
+  local slot := look:AddTweak({name: "A slot on the root", kind: 'slot, target: "GetRoot()", slot: 'tweakDemoValue, source: "42"});
+  local nowhere := look:AddTweak({name: "Nowhere", kind: 'slot, target: "GetRoot().noSuchViewHere", slot: 'x, source: "1"});
+  // (throws unless the global it looks for is there - at the next start it is not)
+  local armed := look:AddTweak({name: "Throws at start", kind: 'function, target: "TweakDemoThrows",
+    source: "begin if not GetGlobalVar('|tweakDemoReady|) then Throw('|evt.ex.msg|, \"not ready\"); func() nil; end"});
+  local real := ShortDate(Time());
+  foreach t in [greeting, dates, slot] do look:SetOn(t, true);
+  Print("look-1: tweaks on: TweakDemoGreeting(\"Ann\") is \"" & call GetGlobalFn('TweakDemoGreeting) with ("Ann")
+    & "\", ShortDate is \"" & ShortDate(Time()) & "\", the root's tweakDemoValue " & GetRoot().tweakDemoValue);
+  look:SetOn(dates, nil);
+  Print("look-1: ShortDate's tweak off: the original back " & call lkYesNo with (StrEqual(ShortDate(Time()), real)));
+  look:SetOn(dates, true);
+  Print("look-1: a tweak whose target is not a frame refused: " & look:SetOn(nowhere, true));
+  DefGlobalVar('|tweakDemoReady|, true);
+  Print("look-1: the arming tweak on " & call lkYesNo with (not look:SetOn(armed, true)));
+  local friend := look:ReceiveTweak({name: "From a friend", kind: 'function, target: "TweakDemoFriend", source: "func() 7"});
+  Print("look-1: a received tweak turned on before it is accepted: " & look:SetOn(friend, true));
+  look:Accept(friend);
+  Print("look-1: accepted, TweakDemoFriend() is " & call GetGlobalFn('TweakDemoFriend) with ());
+  call lkDone with ("1");
+end);

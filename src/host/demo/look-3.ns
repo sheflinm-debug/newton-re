@@ -1,0 +1,10 @@
+// Look inside, step 3 (look-common.ns): after three unfinished starts, a safe
+// start - no tweak loaded; this one finishes, so the next is normal again.
+HostInclude("look-common.ns");
+
+call lkRun with ("3", func() begin
+  local look := call lkLook with ();
+  Print("look-3: a safe start: " & (if look.safe then look.safe else "NOT SAFE") & "; ShortDate is \"" & ShortDate(Time())
+    & "\", TweakDemoGreeting " & (if GetGlobalFn('TweakDemoGreeting) then "there" else "absent"));
+  AddDelayedCall(func() call lkDone with ("3"), nil, 4500);
+end);

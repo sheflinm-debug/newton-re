@@ -1,0 +1,50 @@
+// Look inside (docs/modern/malleable.md; host/HostLookInside.ns): what the steps
+// look-1.ns ... look-4.ns share.  One store (build/look.store) and one count
+// of unfinished starts (NEWTON_STARTS_FILE), four runs one after another
+// (ctests host.NewtonLookInside.1 ... .4, each needing the one before):
+//
+//   1  the inspector on the Notepad (its proto chain, a slot); the source of
+//      a ROM method, compiling again; a tap through the Inspect catcher; the
+//      Script line run with self the Notepad; tweaks - a new global function,
+//      ShortDate replaced (off: the original back; on again), a slot of the
+//      root, one whose target is not a frame (refused), a received one (off
+//      until accepted), one that will throw at the next start.
+//   2  a restart: the tweaks applied again, the throwing one turned off with
+//      its reason; then three starts that never finished are counted.
+//   3  so a safe start: no tweak loaded; this start finishes.
+//   4  newton --no-tweaks: none loaded either.
+//
+//   NEWTON_LOOK_INSIDE=1 NEWTON_STARTS_FILE=build/look-starts build/host/host/newton
+//       --store build/look.store --erase --headless 120 --script src/host/demo/look-1.ns
+
+HostInclude("common.ns");			// waitFor, walkSetup, tapAt
+
+lkName := [2, 0, 45, 34, 14, 37];				// "Daniel" in ADB key codes
+
+lkYesNo := func(x) if x then "true" else "nil";
+
+lkLook := func() GetGlobalVar('|HostLookInside:host|);
+
+// the system ready: Setup gone through on a new store, the Notepad open on one used before
+lkStart := func(andThen)
+  call waitFor with ("look: the system", func() (GetRoot().setup and GetRoot().setup.viewCObject)
+      or (GetRoot().paperroll and GetRoot().paperroll.viewCObject), func() begin
+      if GetRoot().setup and GetRoot().setup.viewCObject then
+        call walkSetup with (lkName, func() AddDelayedCall(andThen, nil, 1000))
+      else
+        AddDelayedCall(andThen, nil, 1000);
+    end, 60);
+
+lkDone := func(name) begin
+  Print("look-" & name & ": done");
+  HostQuit();
+end;
+
+// the step, unless Look inside is off; after the start's tweaks were applied
+lkRun := func(name, step)
+  call lkStart with (func() begin
+      local on := HostFeatureOn('lookinside);
+      Print("look-" & name & ": HostFeatureOn " & call lkYesNo with (on) & ", Inspect " & call lkYesNo with (GetRoot().|Inspect:host|));
+      if not on then return call lkDone with (name);
+      call waitFor with ("look: the start's tweaks", func() (call lkLook with ()).report, func() call step with (), 30);
+    end);

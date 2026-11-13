@@ -9,6 +9,25 @@ have been done (a newer entry, or the subsystem's own page under
 work; this log is how and in what order they came to be, with the host
 bugs and ROM bugs found on the way.
 
+## 2026-11-12: Modern additions - Look inside: Inspect, Script, tweaks
+
+On branch `modern`, behind the Host panel's "Look inside"
+(`NEWTON_LOOK_INSIDE`): `src/host/HostLookInside.ns` and
+`host/HostLookInside.cpp`.
+- Inspect shows any view's proto chain and slots, and the ROM's functions
+  as their decompiled source, found by ROM address in `romsrc/`.
+- A Script line runs code against the thing inspected.
+- Tweaks (global functions, slots) are kept in a soup and applied at
+  start, each restoring what it replaced when turned off; received ones
+  stay off until accepted.
+- A safe start comes from `--no-tweaks`, `NEWTON_NO_TWEAKS`, or three
+  unfinished starts, and a tweak that throws at start is turned off.
+- ctests `host.NewtonLookInside.1` ... `.4` run one store through four
+  starts.
+
+Found on the way: `self` is not bound in code made by `Compile` at run
+time (bare slot names are); `try` is a keyword.
+
 ## 2026-11-12: Modern additions - web pages as Newton text
 
 On branch `modern`, behind the Host panel's "Web" (`NEWTON_WEB`): tier 2

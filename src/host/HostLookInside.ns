@@ -1,0 +1,567 @@
+// Look inside: the inspector, the Script line and tweaks (docs/modern/malleable.md).
+// Compiled into newton (HostLookInsideSource.cpp, made by src/cmake/EmbedText.cmake)
+// and evaluated at boot by HostInstallLookInside (host/HostLookInside.cpp);
+// the frame is kept in the global HostLookInside:host.
+//
+// DEVIATION (host addition, host/Features.h's kFeatureLookInside - the Host
+// panel's "Look inside", NEWTON_LOOK_INSIDE; malleable.md's decision 1 taken
+// as a switch, off unless asked for): with it on -
+//
+// Inspect (Extras): the next tap on anything on the screen opens a slip
+// saying what it is - its proto chain, its slots and their values - frames
+// and arrays opening in turn when tapped, a function showing its source:
+// the ROM's from the decompiled romsrc/ tree (HostSourceOf), a tweak's its
+// own.  Read-only.  The slip's Script line runs NewtonScript with `self` the
+// thing inspected (a frame whose _parent it is: its slots by their bare
+// names, the thing itself as `inspected`), the answer shown below.
+//
+// Tweaks: changes kept, entries of the soup "Tweaks:host" -
+//     {name, kind: 'function | 'slot, target, slot, source, on, order,
+//      received, lastError, written}
+// 'function replaces (or adds) a global function: target its name, source
+// its `func ...`; 'slot sets a slot: target the source of what has it
+// ("GetRoot()", "GetRoot().paperroll"), slot its name, source its value.
+// They are applied at start, in order, to the running system - nothing of
+// the ROM's is overwritten, and a slot of a read-only (ROM) frame cannot be
+// set: such a tweak fails - and each keeps what it replaced, so turning it
+// off puts that back at once.  AddTweak, SetOn, TryOut (until the next start),
+// RemoveTweak; ReceiveTweak keeps one that came from elsewhere off until
+// Accept.
+//
+// Safety (malleable.md): a tweak that throws while it is applied is turned
+// off and reported, and the start goes on; `newton --no-tweaks` and
+// NEWTON_NO_TWEAKS load none; three starts in a row that never finished
+// (HostStartsBegin/HostStartsFinished) make a safe start, with none.
+//
+// NOT YET: the pen held down at start as a safe start; the Script
+// stationery in the Notepad (a line in the inspector instead); routing a
+// tweak by the Action button, and beaming it between two Newtons; "Ask for
+// it" (decision 2: a model's NewtonScript is not yet measured); small
+// applications kept as tweaks; permissions for received tweaks
+// (permissions.md's replaceFunctions grant); a package's or a native
+// function's source; tweaks of an application's template before it opens.
+
+{
+	appSymbol: '|Inspect:host|,
+	tweaksSoup: "Tweaks:host",
+	originals: nil,						// what each applied tweak replaced, by its id
+	report: nil,						// what the start did with the tweaks
+	safe: nil,							// why no tweak was loaded at this start
+
+	// --- tweaks -------------------------------------------------------
+
+	Soup: func()
+	begin
+		local store := GetStores()[0];
+		if not store:HasSoup(tweaksSoup) then
+			store:CreateSoupXmit(tweaksSoup, [], nil);
+		store:GetSoup(tweaksSoup);
+	end,
+
+	Tweaks: func()
+	begin
+		local out := [];
+		local store := GetStores()[0];
+		if not store:HasSoup(tweaksSoup) then return out;
+		local cursor := store:GetSoup(tweaksSoup):Query({});
+		local e := cursor:Entry();
+		while e do begin
+			AddArraySlot(out, e);
+			e := cursor:Next();
+		end;
+		Sort(out, '|<|, 'order);
+	end,
+
+	TweakNamed: func(name)
+	begin
+		foreach t in :Tweaks() do
+			if StrEqual(t.name, name) then return t;
+		nil;
+	end,
+
+	// a tweak kept (off; SetOn turns it on) ==> its entry
+	AddTweak: func(t)
+	begin
+		local entry := {name: t.name, kind: t.kind, target: t.target, slot: t.slot, source: t.source,
+			on: nil, order: Length(:Tweaks()) + 1, received: t.received, lastError: nil,
+			written: "NewtonOS 2.1 on the host (newton-re)",
+			id: "tweak-" & NumberStr(Ticks()) & "-" & NumberStr(Random(1000, 9999))};
+		:Soup():AddXmit(entry, appSymbol);
+		entry;
+	end,
+
+	// one that came from elsewhere: kept off until it is accepted
+	ReceiveTweak: func(t)
+	begin
+		local copy := Clone(t);
+		copy.received := true;
+		Print("tweaks: \"" & t.name & "\" received - it changes " & :WhatItChanges(copy) & "; off until accepted");
+		:AddTweak(copy);
+	end,
+
+	Accept: func(t)
+	begin
+		t.received := nil;
+		EntryChangeXmit(t, appSymbol);
+		:SetOn(t, true);
+	end,
+
+	WhatItChanges: func(t)
+		if t.kind = 'function then "the global function " & t.target
+		else "the slot " & SPrintObject(t.slot) & " of " & t.target,
+
+	// a NewtonScript expression's value
+	Evaluate: func(source)
+		call Compile(source) with (),
+
+	Key: func(t) Intern(t.id),
+
+	// ==> nil, or what went wrong (the tweak is not applied)
+	Apply: func(t)
+	begin
+		if not originals then originals := {};
+		if originals.(:Key(t)) then return nil;			// (already applied)
+		local problem := nil;
+		try begin
+			local value := :Evaluate(t.source);
+			if t.kind = 'function then begin
+				if not IsFunction(value) then
+					return "its source is not a function";
+				local name := Intern(t.target);
+				local before := GetGlobalFn(name);
+				DefGlobalFn(name, value);
+				originals.(:Key(t)) := {had: before <> nil, value: before};
+			end
+			else if t.kind = 'slot then begin
+				local holder := :Evaluate(t.target);
+				if not IsFrame(holder) then return "its target is not a frame";
+				local s := if IsSymbol(t.slot) then t.slot else Intern(t.slot);
+				local saved := {holder: holder, had: HasSlot(holder, s), value: holder.(s)};
+				holder.(s) := value;
+				originals.(:Key(t)) := saved;
+			end
+			else
+				return "it is neither a function nor a slot";
+		end onexception |evt.ex| do
+			problem := :Problem();
+		problem;
+	end,
+
+	// what the exception being handled says
+	Problem: func()
+	begin
+		local e := CurrentException();
+		if not e then return "an exception";
+		local what := SPrintObject(e.name);
+		if IsFrame(e.data) and e.data.errorCode then what := what & " (" & NumberStr(e.data.errorCode) & ")";
+		if IsFrame(e.data) and IsString(e.data.message) then what := what & ": " & e.data.message;
+		what;
+	end,
+
+	// what it replaced put back
+	Remove: func(t)
+	begin
+		if not originals then return nil;
+		local saved := originals.(:Key(t));
+		if not saved then return nil;
+		if t.kind = 'function then begin
+			local name := Intern(t.target);
+			if saved.had then DefGlobalFn(name, saved.value) else UnDefGlobalFn(name);
+		end else begin
+			local s := if IsSymbol(t.slot) then t.slot else Intern(t.slot);
+			if saved.had then saved.holder.(s) := saved.value else RemoveSlot(saved.holder, s);
+		end;
+		RemoveSlot(originals, :Key(t));
+		true;
+	end,
+
+	// on (applied now and at every start) or off (what it replaced back)
+	SetOn: func(t, on)
+	begin
+		if on and t.received then return "accept it first";
+		local problem := nil;
+		if on then problem := :Apply(t) else :Remove(t);
+		t.on := on and not problem;
+		t.lastError := problem;
+		EntryChangeXmit(t, appSymbol);
+		if problem then Print("tweaks: \"" & t.name & "\" not applied - " & problem);
+		problem;
+	end,
+
+	// applied until the next start, not kept on
+	TryOut: func(t)
+		if t.received then "accept it first" else :Apply(t),
+
+	RemoveTweak: func(t)
+	begin
+		:Remove(t);
+		EntryRemoveFromSoupXmit(t, appSymbol);
+	end,
+
+	// at start: every tweak that is on, in order - unless this is a safe start
+	ApplyAtStart: func()
+	begin
+		report := {applied: 0, failed: 0};
+		local refused := HostTweaksRefused();
+		local unfinished := HostStartsBegin();
+		if refused then safe := refused
+		else if unfinished >= 3 then safe := NumberStr(unfinished) & " starts in a row never finished";
+		if safe then
+			Print("tweaks: a safe start (" & safe & "): no tweak loaded")
+		else
+			foreach t in :Tweaks() do
+				if t.on and not t.received then begin
+					local problem := :Apply(t);
+					if problem then begin
+						t.on := nil;
+						t.lastError := problem;
+						EntryChangeXmit(t, appSymbol);
+						report.failed := report.failed + 1;
+						Print("tweaks: \"" & t.name & "\" failed at start and was turned off - " & problem);
+					end else
+						report.applied := report.applied + 1;
+				end;
+		if not safe then Print("tweaks: " & report.applied & " applied at start, " & report.failed & " turned off");
+		// (the start counted as finished once the system has been up a while)
+		AddDelayedCall(func() HostStartsFinished(), nil, 3000);
+	end,
+
+	// --- inspecting ---------------------------------------------------
+
+	// a value in a few words
+	Short: func(v)
+	begin
+		if v = nil then "nil"
+		else if v = true then "true"
+		else if IsString(v) then begin
+			local s := if StrLen(v) > 30 then SubStr(v, 0, 30) & "..." else v;
+			"\"" & s & "\"";
+		end
+		else if IsSymbol(v) then "'" & SPrintObject(v)
+		else if IsNumber(v) then NumberStr(v)
+		else if IsFunction(v) then "a function" & (if HostSourceOf(v) then " (the ROM's)" else "")
+		else if IsFrame(v) then "{" & Length(v) & " slots" & (if v.viewCObject then ", a view" else "") & "}"
+		else if IsArray(v) then "[" & Length(v) & " items]"
+		else if IsBinary(v) then "<" & SPrintObject(ClassOf(v)) & ", " & Length(v) & " bytes>"
+		else SPrintObject(v);
+	end,
+
+	// what a frame is, in a line
+	Describe: func(f)
+	begin
+		if not IsFrame(f) then return :Short(f);
+		local what := if f.viewCObject then "a view" else "a frame";
+		if HasSlot(f, 'appSymbol) and f.appSymbol then what := what & " of " & SPrintObject(f.appSymbol);
+		if HasSlot(f, 'viewClass) and IsNumber(f.viewClass) then what := what & ", viewClass " & NumberStr(f.viewClass);
+		if f.title and IsString(f.title) then what := what & ", \"" & f.title & "\"";
+		what;
+	end,
+
+	// the lines that show a value: [{text, open}] (open: what a tap shows)
+	LinesOf: func(v)
+	begin
+		local lines := [];
+		if IsFunction(v) then begin
+			local source := HostSourceOf(v);
+			if not source then source := :TweakSourceOf(v);
+			if not source then
+				return [{text: "No source here: a native function, or a package's.", open: nil}];
+			foreach l in :Split(source) do AddArraySlot(lines, {text: l, open: nil});
+			return lines;
+		end;
+		if IsArray(v) then begin
+			foreach i, x in v do AddArraySlot(lines, {text: NumberStr(i) & ": " & :Short(x), open: :Openable(x)});
+			return lines;
+		end;
+		if not IsFrame(v) then return [{text: :Short(v), open: nil}];
+		AddArraySlot(lines, {text: :Describe(v), open: nil});
+		// the proto chain
+		local p := v._proto;
+		local depth := 1;
+		while p and depth < 12 do begin
+			AddArraySlot(lines, {text: "proto " & NumberStr(depth) & ": " & :Describe(p) & " - " & Length(p) & " slots", open: p});
+			p := p._proto;
+			depth := depth + 1;
+		end;
+		foreach slot, x in v do
+			if slot <> '_proto then
+				AddArraySlot(lines, {text: SPrintObject(slot) & ": " & :Short(x), open: :Openable(x)});
+		lines;
+	end,
+
+	Openable: func(x) if IsFrame(x) or IsArray(x) or IsFunction(x) then x else nil,
+
+	TweakSourceOf: func(fn)
+	begin
+		foreach t in :Tweaks() do
+			if t.kind = 'function and GetGlobalFn(Intern(t.target)) = fn then return t.source;
+		nil;
+	end,
+
+	Split: func(text)
+	begin
+		local out := [];
+		local start := 0;
+		for i := 0 to StrLen(text) do
+			if i = StrLen(text) or text[i] = $\n then begin
+				AddArraySlot(out, SubStr(text, start, i - start));
+				start := i + 1;
+			end;
+		out;
+	end,
+
+	// the deepest view under a point, the front one at each level
+	ViewAt: func(x, y)
+	begin
+		local found := nil;
+		local look;
+		look := func(v) begin
+			local children := v:ChildViewFrames();
+			for i := Length(children) - 1 to 0 by -1 do begin
+				local c := children[i];
+				local b := c:GlobalBox();
+				if not found and c <> GetRoot().(appSymbol) and x >= b.left and x < b.right and y >= b.top and y < b.bottom then begin
+					found := c;
+					call look with (c);
+				end;
+			end;
+		end;
+		call look with (GetRoot());
+		if found then found else GetRoot();
+	end,
+
+	// Script: NewtonScript run with self the thing inspected ==> {value} or {error}
+	RunScript: func(source, target)
+	begin
+		local result := nil;
+		try begin
+			// (a function sent to a frame whose _parent is the thing: its
+			// slots and methods by their bare names - viewBounds,
+			// :ChildViewFrames() - and the thing itself as `inspected`.
+			// `self` does not work here: in code Compile makes at run time
+			// the receiver is not bound to it - a finding not yet looked
+			// into, docs/modern/malleable.md)
+			local fn := call Compile("func() begin " & source & " end") with ();
+			local runner := {_parent: target, inspected: target, Run: fn};
+			result := {value: runner:Run()};
+		end onexception |evt.ex| do
+			result := {error: :Problem()};
+		result;
+	end,
+
+	// the inspector's slip on a value
+	Inspect: func(v)
+	begin
+		local slip := GetRoot().|Inspector:host|;
+		if not slip then begin
+			slip := BuildContext(inspector);
+			GetRoot().|Inspector:host| := slip;
+		end;
+		slip.stack := [];
+		slip:Show(v);
+		if not slip.viewCObject then slip:Open();
+		slip;
+	end,
+
+	// --- the catcher: the next tap picks what to inspect --------------
+
+	catcher: {
+		viewClass: 74,
+		viewFlags: 517,							// vVisible, vApplication, vClickable
+		viewFormat: 0,
+		viewBounds: {left: 0, top: 0, right: 240, bottom: 320},
+		appSymbol: '|Inspect:host|,
+		viewSetupFormScript: func()
+		begin
+			local b := GetAppParams();
+			viewBounds := RelBounds(0, 0, b.appAreaWidth, b.appAreaTop + b.appAreaHeight);
+		end,
+		viewDrawScript: func()
+		begin
+			local b := :LocalBox();
+			local h := FontHeight(1058816) + 8;
+			:DrawShape(MakeRect(0, 0, b.right, h), {fillPattern: 2, penSize: 1});
+			:DrawShape(MakeText("Tap anything to look inside it", 6, 4, b.right - 6, h - 2), {font: 1058816});
+		end,
+		viewClickScript: func(unit)
+		begin
+			local x := GetPoint(4, unit);
+			local y := GetPoint(5, unit);
+			local look := GetGlobalVar('|HostLookInside:host|);
+			:Close();
+			look:Inspect(look:ViewAt(x, y));
+			true;
+		end
+	},
+
+	// --- the inspector's slip ----------------------------------------
+
+	inspector: {
+		_proto: @179,							// protoFloatNGo
+		viewBounds: {left: 6, top: 30, right: 234, bottom: 300},
+		viewJustify: 0,
+		declareSelf: 'base,
+		kText: 9216,
+		kBold: 1058816,
+		stack: nil,								// what was shown before, for Back
+		shown: nil,								// the value shown
+		lines: nil,
+		top: 0,
+		answer: nil,							// the Script line's last answer
+		viewSetupFormScript: func()
+		begin
+			local p := GetAppParams();
+			viewBounds := RelBounds(p.appAreaLeft + 4, p.appAreaTop + 24, p.appAreaWidth - 8, p.appAreaHeight - 40);
+		end,
+		Look: func() GetGlobalVar('|HostLookInside:host|),
+		Show: func(v)
+		begin
+			shown := v;
+			lines := :Look():LinesOf(v);
+			top := 0;
+			answer := nil;
+			if viewCObject then :Dirty();
+		end,
+		Open1: func(v)
+		begin
+			AddArraySlot(stack, shown);
+			:Show(v);
+		end,
+		Back: func()
+		begin
+			if Length(stack) = 0 then return nil;
+			local v := stack[Length(stack) - 1];
+			SetLength(stack, Length(stack) - 1);
+			:Show(v);
+		end,
+		RunTyped: func()
+		begin
+			local field := nil;
+			foreach c in :ChildViewFrames() do if c.role = 'scriptLine then field := c;
+			if not field then return nil;
+			local r := :Look():RunScript(field.entryLine.text, shown);
+			answer := if r.error then "! " & r.error else "=> " & :Look():Short(r.value);
+			:Dirty();
+			r;
+		end,
+		LineHeight: func() FontHeight(kText) + 2,
+		ListTop: func() FontHeight(kBold) + 10,
+		ListBottom: func() (:LocalBox()).bottom - 52,
+		viewDrawScript: func()
+		begin
+			local b := :LocalBox();
+			local lh := :LineHeight();
+			:DrawShape(MakeText("Look inside" & (if Length(stack) > 0 then "  < back" else ""), 8, 4, b.right - 30, 4 + FontHeight(kBold)), {font: kBold});
+			local y := :ListTop();
+			local i := top;
+			while lines and i < Length(lines) and y + lh <= :ListBottom() do begin
+				local l := lines[i];
+				:DrawShape(MakeText(l.text, 8, y, b.right - 8, y + lh), {font: if l.open then kText + 1048576 else kText});
+				if l.open then :DrawShape(MakeLine(8, y + lh - 1, 8 + Min(b.right - 16, StrFontWidth(l.text, kText)), y + lh - 1), {penSize: 1, penPattern: 3});
+				y := y + lh;
+				i := i + 1;
+			end;
+			if answer then
+				:DrawShape(MakeText(answer, 8, :ListBottom() + 2, b.right - 8, :ListBottom() + 2 + lh), {font: kText});
+		end,
+		viewClickScript: func(unit)
+		begin
+			local box := :GlobalBox();
+			local y := GetPoint(5, unit) - box.top;
+			if y < :ListTop() then begin
+				:Back();
+				return true;
+			end;
+			if y >= :ListBottom() then return nil;
+			local i := top + (y - :ListTop()) div :LineHeight();
+			if lines and i < Length(lines) and lines[i].open then :Open1(lines[i].open);
+			true;
+		end,
+		viewScrollDownScript: func()
+		begin
+			local rows := (:ListBottom() - :ListTop()) div :LineHeight();
+			if lines and top + rows < Length(lines) then begin top := top + rows; :Dirty(); end;
+			true;
+		end,
+		viewScrollUpScript: func()
+		begin
+			local rows := (:ListBottom() - :ListTop()) div :LineHeight();
+			if top > 0 then begin top := Max(0, top - rows); :Dirty(); end;
+			true;
+		end,
+		stepChildren: [
+			{
+				_proto: @189,					// protoLabelInputLine
+				role: 'scriptLine,
+				viewBounds: {left: 6, top: -46, right: -50, bottom: -30},
+				viewJustify: 48 + 128,			// vjParentFullH, vjParentBottomV
+				label: "Script",
+				labelFont: 1058816,
+				entryFont: 9216
+			},
+			{
+				_proto: @226,					// protoTextButton
+				viewBounds: {left: -44, top: -46, right: -8, bottom: -30},
+				viewJustify: 32 + 128 + 2,		// vjParentRightH, vjParentBottomV, vjCenterH
+				text: "Run",
+				buttonClickScript: func() :Parent():RunTyped()
+			}
+		]
+	},
+
+	// --- installing ---------------------------------------------------
+
+	MakeIcon: func()
+	begin
+		local bitmap := MakeBitmap(28, 26, nil);
+		DrawIntoBitmap(MakeOval(3, 3, 19, 19), {penSize: 2}, bitmap);
+		DrawIntoBitmap(MakeLine(16, 16, 25, 25), {penSize: 3}, bitmap);
+		bitmap;
+	end,
+
+	IconEntry: func()
+	begin
+		local extras := GetUnionSoup(@307.name);
+		if not extras then return nil;
+		local cursor := Query(extras, {type: 'index});
+		local e;
+		while (e := cursor:Entry()) do begin
+			if e.app = appSymbol then return e;
+			cursor:Next();
+		end;
+		nil;
+	end,
+
+	started: nil,
+
+	Start: func()
+	begin
+		if not HostFeatureOn('lookinside) then
+			return :Stop();
+		if not GetRoot().(appSymbol) then
+			GetRoot().(appSymbol) := BuildContext(catcher);
+		if not :IconEntry() then begin
+			local extras := GetUnionSoup(@307.name);
+			if extras then
+				extras:AddToDefaultStoreXmit({class: 'ROMFormEntry, text: "Inspect", app: appSymbol,
+					icon: :MakeIcon(), labels: nil, sequence: 37, _tagList: ['_icon, '_noBackup]}, nil);
+		end;
+		// (the tweaks once, at start; later the switch only shows the inspector)
+		if not started then begin
+			started := true;
+			local me := self;
+			// (later: a soup made while the system is starting is refused)
+			AddDelayedCall(func() me:ApplyAtStart(), nil, 1500);
+		end;
+	end,
+
+	Stop: func()
+	begin
+		local e := :IconEntry();
+		if e then EntryRemoveFromSoupXmit(e, nil);
+		foreach sym in [appSymbol, '|Inspector:host|] do begin
+			local v := GetRoot().(sym);
+			if v and v.viewCObject then v:Close();
+		end;
+	end
+}

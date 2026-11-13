@@ -1,0 +1,9 @@
+// Look inside, step 4 (look-common.ns): newton --no-tweaks - none loaded.
+HostInclude("look-common.ns");
+
+call lkRun with ("4", func() begin
+  local look := call lkLook with ();
+  Print("look-4: " & (if look.safe then look.safe else "tweaks loaded") & "; TweakDemoGreeting "
+    & (if GetGlobalFn('TweakDemoGreeting) then "there" else "absent") & ", " & Length(look:Tweaks()) & " tweaks kept");
+  AddDelayedCall(func() call lkDone with ("4"), nil, 4500);
+end);

@@ -1,0 +1,22 @@
+// Look inside, step 2 (look-common.ns): a restart applies the tweaks again;
+// the one that throws at start is turned off; then three starts that never
+// finished are counted.
+HostInclude("look-common.ns");
+
+call lkRun with ("2", func() begin
+  local look := call lkLook with ();
+  local armed := look:TweakNamed("Throws at start");
+  Print("look-2: at start " & look.report.applied & " applied, " & look.report.failed & " turned off; \"Throws at start\" on "
+    & call lkYesNo with (armed.on) & ", its reason kept " & call lkYesNo with (armed.lastError));
+  Print("look-2: after the restart TweakDemoGreeting(\"Bo\") is \"" & call GetGlobalFn('TweakDemoGreeting) with ("Bo")
+    & "\", ShortDate is \"" & ShortDate(Time()) & "\", tweakDemoValue " & GetRoot().tweakDemoValue
+    & ", TweakDemoFriend() " & call GetGlobalFn('TweakDemoFriend) with ());
+  // (after this start has been counted finished: three starts that never finish)
+  AddDelayedCall(func() begin
+      HostStartsBegin();
+      HostStartsBegin();
+      HostStartsBegin();
+      Print("look-2: three unfinished starts counted");
+      call lkDone with ("2");
+    end, nil, 4500);
+end);

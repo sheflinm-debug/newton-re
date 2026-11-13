@@ -199,6 +199,7 @@
 #include "HostMail.h"
 #include "HostSync.h"
 #include "HostWeb.h"
+#include "HostLookInside.h"
 #include "HostSettings.h"
 #include "HostMapping.h"
 #include "ROMImport.h"
@@ -331,7 +332,7 @@ Usage(void)
 {
 	fprintf(stderr, "usage: newton [--objects file | --rom image] [--heap bytes] [--display WxH[xdepth]] [--colour] [--scale n]\n"
 					"              [--script file.ns] [--headless seconds] [--limit seconds] [--window-pen]\n"
-					"              [--store file] [--erase]\n"
+					"              [--store file] [--erase] [--no-tweaks]\n"
 					"              [--flash-size mb] [--flat-flash] [--kernel-heap mb] [--task-stack kb]\n"
 					"              [--bake-objects image [--bake-base address]]\n"
 					"              [--package file.pkg]... [--card file] [--microphone-tone hz] [--tcp-echo port]\n"
@@ -700,6 +701,7 @@ NewtonPreMain(void)
 	HostInstallMail();					// (Internet mail, docs/modern/transports.md)
 	HostInstallSync();					// (sync between Newtons, docs/modern/sync.md)
 	HostInstallWeb();					// (the Web application, docs/modern/web.md)
+	HostInstallLookInside();			// (the inspector and tweaks, docs/modern/malleable.md: last, tweaks reach all the rest)
 	HostInstallSettings();				// (the Host preferences panel, after Network Printers: the Prefs list's last)
 	HostInstallWordEngines();			// (the host's handwriting engines in the Handwriting Recognition slip)
 	// the boot sound (TNotebook::InitToolbox), which may still be playing,
@@ -1134,6 +1136,8 @@ main(int argc, char** argv)
 			gScale = strtol(argv[++i], nil, 0);
 		else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc)
 			script = argv[++i];
+		else if (strcmp(argv[i], "--no-tweaks") == 0)
+			HostSetNoTweaks();			// (docs/modern/malleable.md: a safe start)
 		else if (strcmp(argv[i], "--print-dir") == 0 && i + 1 < argc)
 			HostSetPrintDirectory(argv[++i]);
 		else if (strcmp(argv[i], "--ipp-printer") == 0 && i + 1 < argc)

@@ -215,6 +215,14 @@ add_custom_command(
             -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostWeb.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
     VERBATIM)
+# host/HostLookInside.ns, the inspector and tweaks (docs/modern/malleable.md)
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostLookInsideSource.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/HostLookInside.ns
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/HostLookInsideSource.cpp -DNAME=gHostLookInsideSource
+            -P ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/HostLookInside.ns ${CMAKE_SOURCE_DIR}/cmake/EmbedText.cmake
+    VERBATIM)
 # host/HostAssist.ns, the Assistant's engines (docs/modern/assistant.md)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/HostAssistSource.cpp
@@ -250,8 +258,11 @@ add_executable(newton newton.cpp HostRestart.cpp HostKeyboard.cpp HostPackages.c
                HostMail.cpp HostMailEngine.cpp HostMailFormat.cpp HostMailKeys.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostMailSource.cpp
                HostSync.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostSyncSource.cpp
                HostWeb.cpp HostWebPage.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostWebSource.cpp
+               HostLookInside.cpp ${CMAKE_CURRENT_BINARY_DIR}/HostLookInsideSource.cpp
                ${CMAKE_CURRENT_BINARY_DIR}/HostWordEnginesSource.cpp HostHeapCheck.cpp)
 target_link_libraries(newton PRIVATE newt host_views host_window hal_host_sound hal_timers hal_host_serial hal_host_image)
+# (the inspector reads the ROM's functions' source from the checkout's romsrc/; NEWTON_ROMSRC overrides)
+set_source_files_properties(HostLookInside.cpp PROPERTIES COMPILE_DEFINITIONS "NEWTON_ROMSRC_DIR=\"${CMAKE_SOURCE_DIR}/../romsrc\"")
 if(WIN32)
     target_link_libraries(newton PRIVATE advapi32 bcrypt)		# (the mail passwords' Credential Manager, HostMailKeys.cpp; sync's random ids, HostFilesOS.cpp)
 endif()
@@ -1751,6 +1762,44 @@ if(Python3_EXECUTABLE)
                          FAIL_REGULAR_EXPRESSION "waited in vain|did not start|Traceback")
   endforeach()
 endif()
+
+# Look inside: the inspector, the Script line and tweaks (docs/modern/malleable.md;
+# host/HostLookInside.ns): one store and one count of unfinished starts, four
+# runs one after another (demo/look-common.ns says what each does), the
+# store and the count removed first; the last with --no-tweaks
+add_test(NAME host.NewtonLookInside.clean COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/look.store ${CMAKE_BINARY_DIR}/look-starts)
+set_tests_properties(host.NewtonLookInside.clean PROPERTIES FIXTURES_SETUP look_s0)
+set(look_pass_1 "the source of [0-9]+ ROM functions found.*look-1: the Notepad: .a view, .Notepad.., [0-9]+ protos in its chain, [0-9]+ slots of its own, viewCObject among them true.*StandardFind's source begins .func.a1, a2, a3, a4, a5. begin., compiles again true.*a tap through Inspect picked a view true, inside the Notepad true.*Script, the Notepad inspected, answered true, a mistake answered an error true.*tweaks on: TweakDemoGreeting..Ann.. is .Hello, Ann., ShortDate is .tweaked., the root's tweakDemoValue 42.*ShortDate's tweak off: the original back true.*a tweak whose target is not a frame refused: its target is not a frame.*the arming tweak on true.*a received tweak turned on before it is accepted: accept it first.*accepted, TweakDemoFriend.. is 7.*look-1: done")
+set(look_pass_2 "failed at start and was turned off.*look-2: at start 4 applied, 1 turned off. .Throws at start. on nil, its reason kept true.*after the restart TweakDemoGreeting..Bo.. is .Hello, Bo., ShortDate is .tweaked., tweakDemoValue 42, TweakDemoFriend.. 7.*three unfinished starts counted.*look-2: done")
+set(look_pass_3 "look-3: a safe start: 3 starts in a row never finished. ShortDate is .[A-Z][a-z][a-z] [0-9]+/[0-9]+., TweakDemoGreeting absent.*look-3: done")
+set(look_pass_4 "look-4: --no-tweaks. TweakDemoGreeting absent, 6 tweaks kept.*look-4: done")
+set(look_before look_s0)
+foreach(step 1 2 3 4)
+  set(extra "")
+  if(step STREQUAL "1")
+    set(extra --erase)
+  elseif(step STREQUAL "4")
+    set(extra --no-tweaks)
+  endif()
+  add_test(NAME host.NewtonLookInside.${step} COMMAND newton --display 320x480 --headless 120
+           --store ${CMAKE_BINARY_DIR}/look.store ${extra}
+           --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/look-${step}.ns
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+  set_tests_properties(host.NewtonLookInside.${step} PROPERTIES TIMEOUT 180
+                       FIXTURES_REQUIRED ${look_before} FIXTURES_SETUP look_s${step}
+                       ENVIRONMENT "NEWTON_LOOK_INSIDE=1;NEWTON_STARTS_FILE=${CMAKE_BINARY_DIR}/look-starts"
+                       PASS_REGULAR_EXPRESSION "${look_pass_${step}}"
+                       FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
+  set(look_before look_s${step})
+endforeach()
+add_test(NAME host.NewtonLookInside.off COMMAND newton --display 320x480 --headless 120
+         --store ${CMAKE_BINARY_DIR}/look-off.store --erase
+         --script ${CMAKE_CURRENT_SOURCE_DIR}/demo/look-1.ns
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/..)
+set_tests_properties(host.NewtonLookInside.off PROPERTIES TIMEOUT 180
+                     ENVIRONMENT "NEWTON_LOOK_INSIDE=0;NEWTON_STARTS_FILE=${CMAKE_BINARY_DIR}/look-off-starts"
+                     PASS_REGULAR_EXPRESSION "look-1: HostFeatureOn nil, Inspect nil.*look-1: done"
+                     FAIL_REGULAR_EXPRESSION "waited in vain|did not start")
 
 # checkboxes in a note (docs/modern/structure.md; views/MarginMarks.h): the
 # caret's pop-up makes a paragraph a to-do item, its box ticked and

@@ -14,6 +14,7 @@
 #include "HostMail.h"
 #include "HostSync.h"
 #include "HostWeb.h"
+#include "HostLookInside.h"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -351,7 +352,7 @@ FHostSettingsList(RefArg /*rcvr*/)
 		AddArraySlot(list, RefVar(Item("keepInk", "Keep handwriting", kCheck, KeepInk())));
 	// the other modern additions (host/Features.h), each unless its
 	// variable has the say
-	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery", "Internet mail", "Sync", "Web" };
+	static const char* const kFeatureLabels[kFeatureCount] = { "Marks", "Checkboxes and lists", "Package permissions", "Assistant model", "Files", "Camera and Gallery", "Internet mail", "Sync", "Web", "Look inside" };
 	for (int id = 0; id < kFeatureCount; id++)
 		if (!HostFeatureFromEnvironment(id))
 			AddArraySlot(list, RefVar(Item(HostFeatureSetting(id), kFeatureLabels[id], kCheck, HostFeature(id))));
@@ -473,6 +474,8 @@ FHostSetSetting(RefArg /*rcvr*/, RefArg setting, RefArg value)
 				HostSyncFeatureChanged();
 			if (id == kFeatureWeb)
 				HostWebFeatureChanged();
+			if (id == kFeatureLookInside)
+				HostLookInsideFeatureChanged();
 #endif
 			return TRUEREF;
 		}

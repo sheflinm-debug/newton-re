@@ -1,6 +1,8 @@
 # Software the user can look inside and reshape
 
-**Status: a proposal. The safety rules matter more than the features.**
+**Status: a proposal; a first version built (2026-11-12) - Inspect, the
+Script line and tweaks with the safe start (State). The safety rules matter
+more than the features.**
 
 ## What Newton has
 
@@ -89,3 +91,84 @@ on until accepted.
    switch in the Host panel.
 2. Whether "Ask for it" is in scope before the model's NewtonScript has
    been measured.
+
+## State (2026-11-12, branch `modern`)
+
+Built, behind the Host panel's "Look inside" (`host/Features.h`'s
+`kFeatureLookInside`, `NEWTON_LOOK_INSIDE`): `src/host/HostLookInside.ns`
+(the global `HostLookInside:host`) over `host/HostLookInside.cpp`. The
+owner had said to carry on without asking, so both decisions were taken
+the cautious way: the inspector is behind a switch, off unless asked for
+(decision 1), and "Ask for it" is left out until a model's NewtonScript
+has been measured (decision 2).
+
+- **Inspect** (Extras): the next tap on anything picks the deepest view
+  under it, and a slip shows what it is:
+  - a line saying what it is (a view or a frame, its application, view
+    class, title);
+  - its proto chain, each proto described with its slot count;
+  - its slots and their values in a few words.
+  A frame, an array or a function underlined opens in turn when tapped,
+  and the title line goes back. A function shows its source: for the
+  ROM's, the decompiled source from the checkout's `romsrc/` tree
+  (`HostSourceOf`; read on the first ask - 5480 functions, matched by the
+  ROM address each file is headed with, through `TranslateROMRef`), and a
+  tweak's own source. The ROM's `StandardFind` comes back as its source,
+  which compiles again. Read-only.
+- **The Script line** at the foot of the slip runs NewtonScript against
+  the thing inspected: its slots and methods by their bare names
+  (`viewBounds`, `:ChildViewFrames()`), the thing itself as `inspected`.
+  The answer, or the error, is shown below.
+- **Tweaks:** entries of the soup "Tweaks:host" - `{name, kind, target,
+  slot, source, on, order, received, lastError, written}`.
+  - `'function` replaces or adds a global function (`DefGlobalFn`).
+  - `'slot` sets a slot of the frame its target's source evaluates to.
+  - They are applied at start, in order, to the running system. A slot of
+    a read-only ROM frame cannot be set, so such a tweak fails rather than
+    change the ROM's data.
+  - Each keeps what it replaced, so turning it off puts that back at once
+    (`UnDefGlobalFn` for a function that was new).
+  - The API: `AddTweak`, `SetOn`, `TryOut` (until the next start),
+    `RemoveTweak`. `ReceiveTweak` keeps a tweak from elsewhere off, saying
+    what it changes, until `Accept`.
+- **Safety:**
+  - A tweak that throws while it is applied is turned off with its reason
+    in `lastError`, and the start goes on.
+  - `newton --no-tweaks` and `NEWTON_NO_TWEAKS` load none.
+  - Three starts in a row that never finished make a safe start. The
+    count is kept in `NEWTON_STARTS_FILE`, else `.newton-starts` in the
+    home folder; a start counts as finished three seconds after its
+    tweaks are applied.
+- **Tests:** ctests `host.NewtonLookInside.1` ... `.4` and `.off`
+  (`src/host/demo/look-common.ns` describes the steps). One store, four
+  runs:
+  - the inspector on the Notepad, and a tap through the catcher;
+  - a ROM method's source;
+  - the Script line;
+  - tweaks: on, off with the original back, a refused one, a received
+    one kept off until accepted;
+  - across a restart, one that throws at start turned off;
+  - three unfinished starts, then a safe start;
+  - `--no-tweaks`.
+
+Not built (NOT YET):
+- the pen held down at start as a safe start;
+- the Script stationery in the Notepad (a line in the inspector instead);
+- routing and beaming a tweak, and the test between two `newton`
+  processes;
+- "Ask for it";
+- small applications kept as tweaks;
+- the permissions a received tweak should ask for (`permissions.md`'s
+  `replaceFunctions`);
+- the source of a package's or a native function;
+- tweaks to an application's template before it opens;
+- the system version a tweak names is recorded but not compared.
+
+Found on the way, not yet looked into:
+- In code that `Compile` makes at run time, the `self` keyword is not
+  bound to the receiver of a message, though bare slot names do find the
+  receiver's slots. A function literal in compiled source bound it
+  correctly. This may be a difference in the reconstruction's compiler,
+  to be checked against the ROM's.
+- `try` and `to` are NewtonScript keywords, so neither can name a method
+  or a local.
